@@ -10,9 +10,9 @@
 // On the use of DangerousGetHandle: If the handle has been invalidated, then the API we pass it to will return an error.  These
 // handles should not be exposed to recycling attacks (because they are not exposed at all), but if they were, the worse they
 // could do is diddle with the console buffer.
-#pragma warning disable 1634, 1691
 
 using System;
+using System.Buffers;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Management.Automation;
@@ -44,7 +44,6 @@ namespace Microsoft.PowerShell
     /// Class ConsoleControl is used to wrap the various win32 console APIs 1:1 (i.e. at a low level, without attempting to be a
     /// "true" object-oriented library.
     /// </summary>
-
     internal static class ConsoleControl
     {
 #if !UNIX
@@ -110,7 +109,7 @@ namespace Microsoft.PowerShell
 
             public override string ToString()
             {
-                return string.Format(CultureInfo.InvariantCulture, "{0},{1}", X, Y);
+                return string.Create(CultureInfo.InvariantCulture, $"{X},{Y}");
             }
         }
 
@@ -162,7 +161,7 @@ namespace Microsoft.PowerShell
 
             public override string ToString()
             {
-                return string.Format(CultureInfo.InvariantCulture, "{0},{1},{2},{3}", Left, Top, Right, Bottom);
+                return string.Create(CultureInfo.InvariantCulture, $"{Left},{Top},{Right},{Bottom}");
             }
         }
 
@@ -193,7 +192,7 @@ namespace Microsoft.PowerShell
 
             public override string ToString()
             {
-                return string.Format(CultureInfo.InvariantCulture, "Size: {0}, Visible: {1}", Size, Visible);
+                return string.Create(CultureInfo.InvariantCulture, $"Size: {Size}, Visible: {Visible}");
             }
         }
 
@@ -210,41 +209,6 @@ namespace Microsoft.PowerShell
             // fsCsb*: A 64-bit, code-page bitfield (CPB) that identifies a specific character set or code page.
             internal DWORD fsCsb0;
             internal DWORD fsCsb1;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct CHARSETINFO
-        {
-            // From public\sdk\inc\wingdi.h
-            internal uint ciCharset;   // Character set value.
-            internal uint ciACP;       // ANSI code-page identifier.
-            internal FONTSIGNATURE fs;
-        }
-
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        internal struct TEXTMETRIC
-        {
-            // From public\sdk\inc\wingdi.h
-            public int tmHeight;
-            public int tmAscent;
-            public int tmDescent;
-            public int tmInternalLeading;
-            public int tmExternalLeading;
-            public int tmAveCharWidth;
-            public int tmMaxCharWidth;
-            public int tmWeight;
-            public int tmOverhang;
-            public int tmDigitizedAspectX;
-            public int tmDigitizedAspectY;
-            public char tmFirstChar;
-            public char tmLastChar;
-            public char tmDefaultChar;
-            public char tmBreakChar;
-            public byte tmItalic;
-            public byte tmUnderlined;
-            public byte tmStruckOut;
-            public byte tmPitchAndFamily;
-            public byte tmCharSet;
         }
 
         #region SentInput Data Structures
@@ -276,13 +240,13 @@ namespace Microsoft.PowerShell
             /// The absolute position of the mouse, or the amount of motion since the last mouse event was generated, depending on the value of the dwFlags member.
             /// Absolute data is specified as the x coordinate of the mouse; relative data is specified as the number of pixels moved.
             /// </summary>
-            internal Int32 X;
+            internal int X;
 
             /// <summary>
             /// The absolute position of the mouse, or the amount of motion since the last mouse event was generated, depending on the value of the dwFlags member.
             /// Absolute data is specified as the y coordinate of the mouse; relative data is specified as the number of pixels moved.
             /// </summary>
-            internal Int32 Y;
+            internal int Y;
 
             /// <summary>
             /// If dwFlags contains MOUSEEVENTF_WHEEL, then mouseData specifies the amount of wheel movement. A positive value indicates that the wheel was rotated forward, away from the user;
@@ -448,10 +412,10 @@ namespace Microsoft.PowerShell
         /// </summary>
         /// <param name="hWnd">The window to show...</param>
         /// <param name="nCmdShow">The command to do.</param>
-        /// <returns>True it it was successful.</returns>
+        /// <returns>True if it was successful.</returns>
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+        internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         internal static void SetConsoleMode(ProcessWindowStyle style)
         {
@@ -481,7 +445,6 @@ namespace Microsoft.PowerShell
         /// <summary>
         /// Types of control ConsoleBreakSignals received by break Win32Handler delegates.
         /// </summary>
-
         internal enum ConsoleBreakSignal : uint
         {
             // These correspond to the CRTL_XXX_EVENT #defines in public/sdk/inc/wincon.h
@@ -511,12 +474,11 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleCtrlHandler fails
         /// </exception>
-
         internal static void AddBreakHandler(BreakHandler handlerDelegate)
         {
             bool result = NativeMethods.SetConsoleCtrlHandler(handlerDelegate, true);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -532,12 +494,11 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleCtrlHandler fails
         /// </exception>
-
         internal static void RemoveBreakHandler()
         {
             bool result = NativeMethods.SetConsoleCtrlHandler(null, false);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -555,8 +516,7 @@ namespace Microsoft.PowerShell
             {
                 var handle = NativeMethods.CreateFile(
                     "CONIN$",
-                    (UInt32)
-                    (NativeMethods.AccessQualifiers.GenericRead | NativeMethods.AccessQualifiers.GenericWrite),
+                    (UInt32)(NativeMethods.AccessQualifiers.GenericRead | NativeMethods.AccessQualifiers.GenericWrite),
                     (UInt32)NativeMethods.ShareModes.ShareRead,
                     (IntPtr)0,
                     (UInt32)NativeMethods.CreationDisposition.OpenExisting,
@@ -657,7 +617,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's GetConsoleMode fails
         /// </exception>
-
         internal static ConsoleModes GetMode(ConsoleHandle consoleHandle)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "consoleHandle is not valid");
@@ -666,7 +625,7 @@ namespace Microsoft.PowerShell
             UInt32 m = 0;
             bool result = NativeMethods.GetConsoleMode(consoleHandle.DangerousGetHandle(), out m);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -690,7 +649,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleMode fails
         /// </exception>
-
         internal static void SetMode(ConsoleHandle consoleHandle, ConsoleModes mode)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "consoleHandle is not valid");
@@ -698,7 +656,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.SetConsoleMode(consoleHandle.DangerousGetHandle(), (DWORD)mode);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -740,7 +698,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's ReadConsole fails
         /// </exception>
-
         internal static string ReadConsole(
             ConsoleHandle consoleHandle,
             int initialContentLength,
@@ -777,7 +734,7 @@ namespace Microsoft.PowerShell
                     out charsReaded,
                     ref control);
             keyState = control.dwControlKeyState;
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -813,7 +770,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's ReadConsoleInput fails
         /// </exception>
-
         internal static int ReadConsoleInput(ConsoleHandle consoleHandle, ref INPUT_RECORD[] buffer)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -826,7 +782,7 @@ namespace Microsoft.PowerShell
                     buffer,
                     (DWORD)buffer.Length,
                     out recordsRead);
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -853,7 +809,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's PeekConsoleInput fails
         /// </exception>
-
         internal static int PeekConsoleInput
         (
             ConsoleHandle consoleHandle,
@@ -871,7 +826,7 @@ namespace Microsoft.PowerShell
                     (DWORD)buffer.Length,
                     out recordsRead);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -895,7 +850,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's GetNumberOfConsoleInputEvents fails
         /// </exception>
-
         internal static int GetNumberOfConsoleInputEvents(ConsoleHandle consoleHandle)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -904,7 +858,7 @@ namespace Microsoft.PowerShell
             DWORD numEvents;
             bool result = NativeMethods.GetNumberOfConsoleInputEvents(consoleHandle.DangerousGetHandle(), out numEvents);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -934,7 +888,7 @@ namespace Microsoft.PowerShell
             NakedWin32Handle h = consoleHandle.DangerousGetHandle();
             result = NativeMethods.FlushConsoleInputBuffer(h);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -969,7 +923,7 @@ namespace Microsoft.PowerShell
             CONSOLE_SCREEN_BUFFER_INFO bufferInfo;
             bool result = NativeMethods.GetConsoleScreenBufferInfo(consoleHandle.DangerousGetHandle(), out bufferInfo);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -989,7 +943,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleScreenBufferSize fails
         /// </exception>
-
         internal static void SetConsoleScreenBufferSize(ConsoleHandle consoleHandle, Size newSize)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -1002,7 +955,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.SetConsoleScreenBufferSize(consoleHandle.DangerousGetHandle(), s);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -1078,7 +1031,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="ArgumentException">
         /// If it is illegal to write <paramref name="contents"/> to the output buffer
         /// </exception>
-
         internal static void WriteConsoleOutput(ConsoleHandle consoleHandle, Coordinates origin, BufferCell[,] contents)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -1262,8 +1214,7 @@ namespace Microsoft.PowerShell
             {
                 if (firstLeftTrailingRow >= 0)
                 {
-                    throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]",
-                        firstLeftTrailingRow, contentsRegion.Left));
+                    throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{firstLeftTrailingRow}, {contentsRegion.Left}]"));
                 }
             }
             else
@@ -1278,8 +1229,7 @@ namespace Microsoft.PowerShell
                     if (leftExisting[r, 0].BufferCellType == BufferCellType.Leading ^
                             contents[r, contentsRegion.Left].BufferCellType == BufferCellType.Trailing)
                     {
-                        throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]",
-                            r, contentsRegion.Left));
+                        throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{r}, {contentsRegion.Left}]"));
                     }
                 }
             }
@@ -1288,8 +1238,7 @@ namespace Microsoft.PowerShell
             {
                 if (firstRightLeadingRow >= 0)
                 {
-                    throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]",
-                            firstRightLeadingRow, contentsRegion.Right));
+                    throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{firstRightLeadingRow}, {contentsRegion.Right}]"));
                 }
             }
             else
@@ -1304,8 +1253,7 @@ namespace Microsoft.PowerShell
                     if (rightExisting[r, 0].BufferCellType == BufferCellType.Leading ^
                             contents[r, contentsRegion.Right].BufferCellType == BufferCellType.Leading)
                     {
-                        throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]",
-                            r, contentsRegion.Right));
+                        throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{r}, {contentsRegion.Right}]"));
                     }
                 }
             }
@@ -1325,7 +1273,7 @@ namespace Microsoft.PowerShell
                         contents[r, c].Character != 0)
                     {
                         // trailing character is not 0
-                        throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]", r, c));
+                        throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{r}, {c}]"));
                     }
 
                     if (contents[r, c].BufferCellType == BufferCellType.Leading)
@@ -1340,7 +1288,7 @@ namespace Microsoft.PowerShell
                         {
                             // for a 2 cell character, either there is no trailing BufferCell or
                             // the trailing BufferCell's character is not 0
-                            throw PSTraceSource.NewArgumentException(string.Format(CultureInfo.InvariantCulture, "contents[{0}, {1}]", r, c));
+                            throw PSTraceSource.NewArgumentException(string.Create(CultureInfo.InvariantCulture, $"contents[{r}, {c}]"));
                         }
                     }
                 }
@@ -1492,9 +1440,7 @@ namespace Microsoft.PowerShell
                         bSize.X++;
                         SMALL_RECT wRegion = writeRegion;
                         wRegion.Right++;
-                        // Suppress the PreFAST warning about not using Marshal.GetLastWin32Error() to
-                        // get the error code.
-#pragma warning disable 56523
+
                         result = NativeMethods.WriteConsoleOutput(
                             consoleHandle.DangerousGetHandle(),
                             characterBuffer,
@@ -1504,9 +1450,6 @@ namespace Microsoft.PowerShell
                     }
                     else
                     {
-                        // Suppress the PreFAST warning about not using Marshal.GetLastWin32Error() to
-                        // get the error code.
-#pragma warning disable 56523
                         result = NativeMethods.WriteConsoleOutput(
                             consoleHandle.DangerousGetHandle(),
                             characterBuffer,
@@ -1515,7 +1458,7 @@ namespace Microsoft.PowerShell
                             ref writeRegion);
                     }
 
-                    if (result == false)
+                    if (!result)
                     {
                         // When WriteConsoleOutput fails, half bufferLimit
                         if (bufferLimit < 2)
@@ -1540,7 +1483,7 @@ namespace Microsoft.PowerShell
                             // to write is larger than bufferLimit. In that case, the algorithm writes one row
                             // at a time => bufferSize.Y == 1. Then, we can safely leave bufferSize.Y unchanged
                             // to retry with a smaller bufferSize.X.
-                            Dbg.Assert(bufferSize.Y == 1, string.Format(CultureInfo.InvariantCulture, "bufferSize.Y should be 1, but is {0}", bufferSize.Y));
+                            Dbg.Assert(bufferSize.Y == 1, string.Create(CultureInfo.InvariantCulture, $"bufferSize.Y should be 1, but is {bufferSize.Y}"));
                             bufferSize.X = (short)Math.Min(colsRemaining, bufferLimit);
                             continue;
                         }
@@ -1643,7 +1586,7 @@ namespace Microsoft.PowerShell
                             bufferCoord,
                             ref writeRegion);
 
-                    if (result == false)
+                    if (!result)
                     {
                         // When WriteConsoleOutput fails, half bufferLimit
                         if (bufferLimit < 2)
@@ -1668,7 +1611,7 @@ namespace Microsoft.PowerShell
                             // to write is larger than bufferLimit. In that case, the algorithm writes one row
                             // at a time => bufferSize.Y == 1. Then, we can safely leave bufferSize.Y unchanged
                             // to retry with a smaller bufferSize.X.
-                            Dbg.Assert(bufferSize.Y == 1, string.Format(CultureInfo.InvariantCulture, "bufferSize.Y should be 1, but is {0}", bufferSize.Y));
+                            Dbg.Assert(bufferSize.Y == 1, string.Create(CultureInfo.InvariantCulture, $"bufferSize.Y should be 1, but is {bufferSize.Y}"));
                             bufferSize.X = (short)Math.Min(colsRemaining, bufferLimit);
                             continue;
                         }
@@ -1705,7 +1648,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If there is not enough memory to complete calls to Win32's ReadConsoleOutput
         /// </exception>
-
         internal static void ReadConsoleOutput
         (
             ConsoleHandle consoleHandle,
@@ -1746,10 +1688,7 @@ namespace Microsoft.PowerShell
                 if (origin.X + (contentsRegion.Right - contentsRegion.Left) + 1 < bufferInfo.BufferSize.X &&
                     ShouldCheck(contentsRegion.Right, contents, contentsRegion))
                 {
-                    if (cellArray == null)
-                    {
-                        cellArray = new BufferCell[cellArrayRegion.Bottom + 1, 2];
-                    }
+                    cellArray ??= new BufferCell[cellArrayRegion.Bottom + 1, 2];
 
                     checkOrigin = new Coordinates(origin.X +
                         (contentsRegion.Right - contentsRegion.Left), origin.Y);
@@ -1813,9 +1752,7 @@ namespace Microsoft.PowerShell
             readRegion.Top = (short)origin.Y;
             readRegion.Right = (short)(origin.X + bufferSize.X - 1);
             readRegion.Bottom = (short)(origin.Y + bufferSize.Y - 1);
-            // Suppress the PreFAST warning about not using Marshal.GetLastWin32Error() to
-            // get the error code.
-#pragma warning disable 56523
+
             bool result = NativeMethods.ReadConsoleOutput(
                                         consoleHandle.DangerousGetHandle(),
                                         characterBuffer,
@@ -1972,7 +1909,7 @@ namespace Microsoft.PowerShell
                             new Coordinates(readRegion.Left, readRegion.Top),
                             atContents,
                             ref contents);
-                    if (result == false)
+                    if (!result)
                     {
                         // When WriteConsoleOutput fails, half bufferLimit
                         if (bufferLimit < 2)
@@ -1999,7 +1936,7 @@ namespace Microsoft.PowerShell
                                 // to write is larger than bufferLimit. In that case, the algorithm reads one row
                                 // at a time => bufferSize.Y == 1. Then, we can safely leave bufferSize.Y unchanged
                                 // to retry with a smaller bufferSize.X.
-                                Dbg.Assert(bufferSize.Y == 1, string.Format(CultureInfo.InvariantCulture, "bufferSize.Y should be 1, but is {0}", bufferSize.Y));
+                                Dbg.Assert(bufferSize.Y == 1, string.Create(CultureInfo.InvariantCulture, $"bufferSize.Y should be 1, but is {bufferSize.Y}"));
                                 bufferSize.X = (short)Math.Min(colsRemaining, bufferLimit);
                                 continue;
                             }
@@ -2144,7 +2081,7 @@ namespace Microsoft.PowerShell
                                         bufferCoord,
                                         ref readRegion);
 
-                    if (result == false)
+                    if (!result)
                     {
                         // When WriteConsoleOutput fails, half bufferLimit
                         if (bufferLimit < 2)
@@ -2169,7 +2106,7 @@ namespace Microsoft.PowerShell
                             // to write is larger than bufferLimit. In that case, the algorithm reads one row
                             // at a time => bufferSize.Y == 1. Then, we can safely leave bufferSize.Y unchanged
                             // to retry with a smaller bufferSize.X.
-                            Dbg.Assert(bufferSize.Y == 1, string.Format(CultureInfo.InvariantCulture, "bufferSize.Y should be 1, but is {0}", bufferSize.Y));
+                            Dbg.Assert(bufferSize.Y == 1, string.Create(CultureInfo.InvariantCulture, $"bufferSize.Y should be 1, but is {bufferSize.Y}"));
                             bufferSize.X = (short)Math.Min(colsRemaining, bufferLimit);
                             continue;
                         }
@@ -2184,8 +2121,7 @@ namespace Microsoft.PowerShell
                     {
                         for (int c = atContentsCol; c < bufferSize.X + atContentsCol; c++, characterBufferIndex++)
                         {
-                            contents[r, c].Character = (char)
-                                characterBuffer[characterBufferIndex].UnicodeChar;
+                            contents[r, c].Character = (char)characterBuffer[characterBufferIndex].UnicodeChar;
                             ConsoleColor fgColor, bgColor;
                             WORDToColor(characterBuffer[characterBufferIndex].Attributes,
                                 out fgColor,
@@ -2285,15 +2221,14 @@ namespace Microsoft.PowerShell
             c.X = (short)origin.X;
             c.Y = (short)origin.Y;
 
-            DWORD unused = 0;
             bool result =
                 NativeMethods.FillConsoleOutputCharacter(
                     consoleHandle.DangerousGetHandle(),
                     character,
                     (DWORD)numberToWrite,
                     c,
-                    out unused);
-            if (result == false)
+                    out _);
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2339,16 +2274,15 @@ namespace Microsoft.PowerShell
             c.X = (short)origin.X;
             c.Y = (short)origin.Y;
 
-            DWORD unused = 0;
             bool result =
                 NativeMethods.FillConsoleOutputAttribute(
                     consoleHandle.DangerousGetHandle(),
                     attribute,
                     (DWORD)numberToWrite,
                     c,
-                    out unused);
+                    out _);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2379,7 +2313,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's ScrollConsoleScreenBuffer fails
         /// </exception>
-
         internal static void ScrollConsoleScreenBuffer
         (
             ConsoleHandle consoleHandle,
@@ -2399,7 +2332,7 @@ namespace Microsoft.PowerShell
                     destOrigin,
                     ref fill);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2430,7 +2363,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleWindowInfo fails
         /// </exception>
-
         internal static void SetConsoleWindowInfo(ConsoleHandle consoleHandle, bool absolute, SMALL_RECT windowInfo)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -2438,7 +2370,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.SetConsoleWindowInfo(consoleHandle.DangerousGetHandle(), absolute, ref windowInfo);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2460,7 +2392,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's GetLargestConsoleWindowSize fails
         /// </exception>
-
         internal static Size GetLargestConsoleWindowSize(ConsoleHandle consoleHandle)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -2490,17 +2421,13 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's GetConsoleTitle fails
         /// </exception>
-
         internal static string GetConsoleWindowTitle()
         {
             const int MaxWindowTitleLength = 1024;
-            DWORD bufferSize = MaxWindowTitleLength;
+            const DWORD bufferSize = MaxWindowTitleLength;
             DWORD result;
             StringBuilder consoleTitle = new StringBuilder((int)bufferSize);
 
-            // Suppress the PreFAST warning about not using Marshal.GetLastWin32Error() to
-            // get the error code.
-#pragma warning disable 56523
             result = NativeMethods.GetConsoleTitle(consoleTitle, bufferSize);
             // If the result is zero, it may mean and error but it may also mean
             // that the window title has been set to null. Since we can't tell the
@@ -2513,6 +2440,8 @@ namespace Microsoft.PowerShell
             return consoleTitle.ToString();
         }
 
+        private static bool s_dontsetConsoleWindowTitle;
+
         /// <summary>
         /// Wraps Win32 SetConsoleTitle.
         /// </summary>
@@ -2522,14 +2451,28 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleTitle fails
         /// </exception>
-
         internal static void SetConsoleWindowTitle(string consoleTitle)
         {
+            if (s_dontsetConsoleWindowTitle)
+            {
+                return;
+            }
+
             bool result = NativeMethods.SetConsoleTitle(consoleTitle);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
+
+                // ERROR_GEN_FAILURE is returned if this api can't be used with the terminal
+                if (err == 0x1f)
+                {
+                    tracer.WriteLine("Call to SetConsoleTitle failed: {0}", err);
+                    s_dontsetConsoleWindowTitle = true;
+
+                    // We ignore this specific error as the console can still continue to operate
+                    return;
+                }
 
                 HostException e = CreateHostException(err, "SetConsoleWindowTitle",
                     ErrorCategory.ResourceUnavailable, ConsoleControlStrings.SetConsoleWindowTitleExceptionTemplate);
@@ -2569,40 +2512,54 @@ namespace Microsoft.PowerShell
                 return;
             }
 
-            // Native WriteConsole doesn't support output buffer longer than 64K.
-            // We need to chop the output string if it is too long.
-            int cursor = 0; // This records the chopping position in output string
-            const int MaxBufferSize = 16383; // this is 64K/4 - 1 to account for possible width of each character.
+            // Native WriteConsole doesn't support output buffer longer than 64K, so we need to chop the output string if it is too long.
+            // This records the chopping position in output string.
+            int cursor = 0;
+            // This is 64K/4 - 1 to account for possible width of each character.
+            const int MaxBufferSize = 16383;
+            const int MaxStackAllocSize = 512;
+            ReadOnlySpan<char> outBuffer;
 
-            while (cursor < output.Length)
+            // In case that a new line is required, we try to write out the last chunk and the new-line string together,
+            // to avoid one extra call to 'WriteConsole' just for a new line string.
+            while (cursor + MaxBufferSize < output.Length)
             {
-                ReadOnlySpan<char> outBuffer;
+                outBuffer = output.Slice(cursor, MaxBufferSize);
+                cursor += MaxBufferSize;
+                WriteConsole(consoleHandle, outBuffer);
+            }
 
-                if (cursor + MaxBufferSize < output.Length)
+            outBuffer = output.Slice(cursor);
+            if (!newLine)
+            {
+                WriteConsole(consoleHandle, outBuffer);
+                return;
+            }
+
+            char[] rentedArray = null;
+            string lineEnding = Environment.NewLine;
+            int size = outBuffer.Length + lineEnding.Length;
+
+            // We expect the 'size' will often be small, and thus optimize that case with 'stackalloc'.
+            Span<char> buffer = size <= MaxStackAllocSize ? stackalloc char[size] : default;
+
+            try
+            {
+                if (buffer.IsEmpty)
                 {
-                    outBuffer = output.Slice(cursor, MaxBufferSize);
-                    cursor += MaxBufferSize;
-
-                    WriteConsole(consoleHandle, outBuffer);
+                    rentedArray = ArrayPool<char>.Shared.Rent(size);
+                    buffer = rentedArray.AsSpan().Slice(0, size);
                 }
-                else
-                {
-                    outBuffer = output.Slice(cursor);
-                    cursor = output.Length;
 
-                    if (newLine)
-                    {
-                        var endOfLine = Environment.NewLine.AsSpan();
-                        var endOfLineLength = endOfLine.Length;
-                        Span<char> outBufferLine = stackalloc char[outBuffer.Length + endOfLineLength];
-                        outBuffer.CopyTo(outBufferLine);
-                        endOfLine.CopyTo(outBufferLine.Slice(outBufferLine.Length - endOfLineLength));
-                        WriteConsole(consoleHandle, outBufferLine);
-                    }
-                    else
-                    {
-                        WriteConsole(consoleHandle, outBuffer);
-                    }
+                outBuffer.CopyTo(buffer);
+                lineEnding.CopyTo(buffer.Slice(outBuffer.Length));
+                WriteConsole(consoleHandle, buffer);
+            }
+            finally
+            {
+                if (rentedArray is not null)
+                {
+                    ArrayPool<char>.Shared.Return(rentedArray);
                 }
             }
         }
@@ -2618,7 +2575,7 @@ namespace Microsoft.PowerShell
                     out charsWritten,
                     IntPtr.Zero);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2643,7 +2600,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// if the Win32's SetConsoleTextAttribute fails
         /// </exception>
-
         internal static void SetConsoleTextAttribute(ConsoleHandle consoleHandle, WORD attribute)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -2651,7 +2607,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.SetConsoleTextAttribute(consoleHandle.DangerousGetHandle(), attribute);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2673,7 +2629,7 @@ namespace Microsoft.PowerShell
         //     CSI params? '#' [{}pq]        // XTPUSHSGR ('{'), XTPOPSGR ('}'), or their aliases ('p' and 'q')
         //
         // Where:
-        //     params: digit+ (';' params)?
+        //     params: digit+ ((';' | ':') params)?
         //     CSI:     C0_CSI | C1_CSI
         //     C0_CSI:  \x001b '['            // ESC '['
         //     C1_CSI:  \x009b
@@ -2718,7 +2674,7 @@ namespace Microsoft.PowerShell
             {
                 c = str[offset++];
             }
-            while ((offset < str.Length) && (char.IsDigit(c) || c == ';'));
+            while ((offset < str.Length) && (char.IsDigit(c) || (c == ';') || (c == ':')));
 
             // Finally, handle the command characters for the specific sequences we
             // handle:
@@ -2808,7 +2764,7 @@ namespace Microsoft.PowerShell
                  ((uint)(c - 0xffe0) <= (0xffe6 - 0xffe0)));
 
             // We can ignore these ranges because .Net strings use surrogate pairs
-            // for this range and we do not handle surrogage pairs.
+            // for this range and we do not handle surrogate pairs.
             // (c >= 0x20000 && c <= 0x2fffd) ||
             // (c >= 0x30000 && c <= 0x3fffd)
             return 1 + (isWide ? 1 : 0);
@@ -2838,41 +2794,6 @@ namespace Microsoft.PowerShell
         #region Cursor
 
         /// <summary>
-        /// Wraps Win32 SetConsoleCursorPosition.
-        /// </summary>
-        /// <param name="consoleHandle">
-        /// handle for the console where cursor position is set
-        /// </param>
-        /// <param name="cursorPosition">
-        /// location to which the cursor will be set
-        /// </param>
-        /// <exception cref="HostException">
-        /// If Win32's SetConsoleCursorPosition fails
-        /// </exception>
-
-        internal static void SetConsoleCursorPosition(ConsoleHandle consoleHandle, Coordinates cursorPosition)
-        {
-            Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
-            Dbg.Assert(!consoleHandle.IsClosed, "ConsoleHandle is closed");
-
-            ConsoleControl.COORD c;
-
-            c.X = (short)cursorPosition.X;
-            c.Y = (short)cursorPosition.Y;
-
-            bool result = NativeMethods.SetConsoleCursorPosition(consoleHandle.DangerousGetHandle(), c);
-
-            if (result == false)
-            {
-                int err = Marshal.GetLastWin32Error();
-
-                HostException e = CreateHostException(err, "SetConsoleCursorPosition",
-                    ErrorCategory.ResourceUnavailable, ConsoleControlStrings.SetConsoleCursorPositionExceptionTemplate);
-                throw e;
-            }
-        }
-
-        /// <summary>
         /// Wraps Win32 GetConsoleCursorInfo.
         /// </summary>
         /// <param name="consoleHandle">
@@ -2884,7 +2805,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's GetConsoleCursorInfo fails
         /// </exception>
-
         internal static CONSOLE_CURSOR_INFO GetConsoleCursorInfo(ConsoleHandle consoleHandle)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -2894,7 +2814,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.GetConsoleCursorInfo(consoleHandle.DangerousGetHandle(), out cursorInfo);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2915,7 +2835,7 @@ namespace Microsoft.PowerShell
             fontInfo.cbSize = Marshal.SizeOf(fontInfo);
             bool result = NativeMethods.GetCurrentConsoleFontEx(consoleHandle.DangerousGetHandle(), false, ref fontInfo);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -2939,7 +2859,6 @@ namespace Microsoft.PowerShell
         /// <exception cref="HostException">
         /// If Win32's SetConsoleCursorInfo fails
         /// </exception>
-
         internal static void SetConsoleCursorInfo(ConsoleHandle consoleHandle, CONSOLE_CURSOR_INFO cursorInfo)
         {
             Dbg.Assert(!consoleHandle.IsInvalid, "ConsoleHandle is not valid");
@@ -2947,7 +2866,7 @@ namespace Microsoft.PowerShell
 
             bool result = NativeMethods.SetConsoleCursorInfo(consoleHandle.DangerousGetHandle(), ref cursorInfo);
 
-            if (result == false)
+            if (!result)
             {
                 int err = Marshal.GetLastWin32Error();
 
@@ -3002,7 +2921,6 @@ namespace Microsoft.PowerShell
         /// <summary>
         /// Class to hold the Native Methods used in this file enclosing class.
         /// </summary>
-
         internal static class NativeMethods
         {
             internal static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);  // WinBase.h
@@ -3182,10 +3100,6 @@ namespace Microsoft.PowerShell
             [return: MarshalAs(UnmanagedType.Bool)]
             internal static extern bool SetConsoleCtrlHandler(BreakHandler handlerRoutine, bool add);
 
-            [DllImport(PinvokeDllNames.SetConsoleCursorPositionDllName, SetLastError = true, CharSet = CharSet.Unicode)]
-            [return: MarshalAs(UnmanagedType.Bool)]
-            internal static extern bool SetConsoleCursorPosition(NakedWin32Handle consoleOutput, COORD cursorPosition);
-
             [DllImport(PinvokeDllNames.SetConsoleModeDllName, SetLastError = true, CharSet = CharSet.Unicode)]
             [return: MarshalAs(UnmanagedType.Bool)]
             internal static extern bool SetConsoleMode(NakedWin32Handle consoleHandle, DWORD mode);
@@ -3236,7 +3150,7 @@ namespace Microsoft.PowerShell
             );
 
             [DllImport(PinvokeDllNames.SendInputDllName, SetLastError = true, CharSet = CharSet.Unicode)]
-            internal static extern UInt32 SendInput(UInt32 inputNumbers, INPUT[] inputs, Int32 sizeOfInput);
+            internal static extern UInt32 SendInput(UInt32 inputNumbers, INPUT[] inputs, int sizeOfInput);
 
             // There is no GetCurrentConsoleFontEx on Core
             [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -3269,7 +3183,7 @@ namespace Microsoft.PowerShell
         }
 
         [TraceSourceAttribute("ConsoleControl", "Console control methods")]
-        private static PSTraceSource tracer = PSTraceSource.GetTracer("ConsoleControl", "Console control methods");
+        private static readonly PSTraceSource tracer = PSTraceSource.GetTracer("ConsoleControl", "Console control methods");
 #endif
     }
 }

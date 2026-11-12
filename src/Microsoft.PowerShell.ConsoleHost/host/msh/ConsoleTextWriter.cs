@@ -4,12 +4,7 @@
 using System;
 using System.IO;
 using System.Text;
-
-using ConsoleHandle = Microsoft.Win32.SafeHandles.SafeFileHandle;
 using Dbg = System.Management.Automation.Diagnostics;
-using DWORD = System.UInt32;
-using HRESULT = System.UInt32;
-using NakedWin32Handle = System.IntPtr;
 
 namespace Microsoft.PowerShell
 {
@@ -18,8 +13,7 @@ namespace Microsoft.PowerShell
     {
         internal
         ConsoleTextWriter(ConsoleHostUserInterface ui)
-            :
-            base(System.Globalization.CultureInfo.CurrentCulture)
+            : base(System.Globalization.CultureInfo.CurrentCulture)
         {
             Dbg.Assert(ui != null, "ui needs a value");
 
@@ -82,8 +76,8 @@ namespace Microsoft.PowerShell
         void
         Write(char c)
         {
-            ReadOnlySpan<char> c1 = stackalloc char[1] { c };
-            _ui.WriteToConsole(c1, transcribeResult: true);
+            ReadOnlySpan<char> value = [c];
+            _ui.WriteToConsole(value, transcribeResult: true);
         }
 
         public override
@@ -93,6 +87,6 @@ namespace Microsoft.PowerShell
             _ui.WriteToConsole(a, transcribeResult: true);
         }
 
-        private ConsoleHostUserInterface _ui;
+        private readonly ConsoleHostUserInterface _ui;
     }
 }

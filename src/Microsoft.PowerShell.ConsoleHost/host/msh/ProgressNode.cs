@@ -6,6 +6,9 @@ using System.Collections;
 using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Management.Automation.Internal;
+using System.Text;
+
+using Microsoft.PowerShell.Commands.Internal.Format;
 
 using Dbg = System.Management.Automation.Diagnostics;
 
@@ -15,15 +18,13 @@ namespace Microsoft.PowerShell
     /// ProgressNode is an augmentation of the ProgressRecord type that adds extra fields for the purposes of tracking
     /// outstanding activities received by the host, and rendering them in the console.
     /// </summary>
-
     internal
     class
     ProgressNode : ProgressRecord
     {
         /// <summary>
-        /// Indicates the various layouts for rendering a particular node.  Each style is progressively less terse.
+        /// Indicates the various layouts for rendering a particular node.
         /// </summary>
-
         internal
         enum
         RenderStyle
@@ -42,16 +43,19 @@ namespace Microsoft.PowerShell
             /// The node will be displayed the same as Full, plus, the whole StatusDescription and CurrentOperation will be displayed (in multiple lines if needed).
             /// </summary>
             FullPlus = 4,
-        };
+
+            /// <summary>
+            /// The node will be displayed using ANSI escape sequences.
+            /// </summary>
+            Ansi = 5,
+        }
 
         /// <summary>
         /// Constructs an instance from a ProgressRecord.
         /// </summary>
-
         internal
-        ProgressNode(Int64 sourceId, ProgressRecord record)
-            :
-            base(record.ActivityId, record.Activity, record.StatusDescription)
+        ProgressNode(long sourceId, ProgressRecord record)
+            : base(record.ActivityId, record.Activity, record.StatusDescription)
         {
             Dbg.Assert(record.RecordType == ProgressRecordType.Processing, "should only create node for Processing records");
 
@@ -60,7 +64,11 @@ namespace Microsoft.PowerShell
             this.PercentComplete = Math.Min(record.PercentComplete, 100);
             this.SecondsRemaining = record.SecondsRemaining;
             this.RecordType = record.RecordType;
-            this.Style = RenderStyle.FullPlus;
+
+            this.Style = IsMinimalProgressRenderingEnabled()
+                ? RenderStyle.Ansi
+                : RenderStyle.FullPlus;
+
             this.SourceId = sourceId;
         }
 
@@ -80,7 +88,6 @@ namespace Microsoft.PowerShell
         /// <param name="rawUI">
         /// The PSHostRawUserInterface used to gauge string widths in the rendering.
         /// </param>
-
         internal
         void
         Render(ArrayList strCollection, int indentation, int maxWidth, PSHostRawUserInterface rawUI)
@@ -102,6 +109,9 @@ namespace Microsoft.PowerShell
                     break;
                 case RenderStyle.Minimal:
                     RenderMinimal(strCollection, indentation, maxWidth, rawUI);
+                    break;
+                case RenderStyle.Ansi:
+                    RenderAnsi(strCollection, indentation, maxWidth, rawUI);
                     break;
                 case RenderStyle.Invisible:
                     // do nothing
@@ -130,7 +140,6 @@ namespace Microsoft.PowerShell
         /// <param name="isFullPlus">
         /// Indicate if the full StatusDescription and CurrentOperation should be displayed.
         /// </param>
-
         private
         void
         RenderFull(ArrayList strCollection, int indentation, int maxWidth, PSHostRawUserInterface rawUI, bool isFullPlus)
@@ -240,7 +249,6 @@ namespace Microsoft.PowerShell
         /// <param name="rawUI">
         /// The PSHostRawUserInterface used to gauge string widths in the rendering.
         /// </param>
-
         private
         void
         RenderCompact(ArrayList strCollection, int indentation, int maxWidth, PSHostRawUserInterface rawUI)
@@ -309,7 +317,6 @@ namespace Microsoft.PowerShell
         /// <param name="rawUI">
         /// The PSHostRawUserInterface used to gauge string widths in the rendering.
         /// </param>
-
         private
         void
         RenderMinimal(ArrayList strCollection, int indentation, int maxWidth, PSHostRawUserInterface rawUI)
@@ -344,10 +351,175 @@ namespace Microsoft.PowerShell
                     maxWidth));
         }
 
+        internal static bool IsMinimalProgressRenderingEnabled()
+        {
+            return PSStyle.Instance.Progress.View == ProgressView.Minimal;
+        }
+
+        /// <summary>
+        /// Renders a node in the "ANSI" style.
+        /// </summary>
+        /// <param name="strCollection">
+        /// List of strings to which the node's rendering will be appended.
+        /// </param>
+        /// <param name="indentation">
+        /// The indentation level in chars at which the node should be rendered.
+        /// </param>
+        /// <param name="maxWidth">
+        /// The maximum number of chars that the rendering is allowed to consume.
+        /// </param>
+        /// <param name="rawUI">
+        /// The PSHostRawUserInterface used to gauge string widths in the rendering.
+        /// </param>
+        private
+        void
+        RenderAnsi(ArrayList strCollection, int indentation, int maxWidth, PSHostRawUserInterface rawUI)
+        {
+            string indent = StringUtil.Padding(indentation);
+            string secRemain = string.Empty;
+            if (SecondsRemaining >= 0)
+            {
+                secRemain = SecondsRemaining.ToString() + "s";
+            }
+
+            int secRemainLength = secRemain.Length + 1;
+
+            // limit progress bar to 120 chars as no need to render full width
+            if (PSStyle.Instance.Progress.MaxWidth > 0 && maxWidth > PSStyle.Instance.Progress.MaxWidth)
+            {
+                maxWidth = PSStyle.Instance.Progress.MaxWidth;
+            }
+
+            // if the activity is really long, only use up to half the width
+            string activity;
+            int activityDisplayCellsWidth = rawUI.LengthInBufferCells(Activity);
+            if (activityDisplayCellsWidth > maxWidth / 2)
+            {
+                activity = StringUtil.TruncateToBufferCellWidth(rawUI, Activity, (maxWidth / 2) - 1) + PSObjectHelper.Ellipsis;
+            }
+            else
+            {
+                activity = Activity;
+            }
+
+            activityDisplayCellsWidth = rawUI.LengthInBufferCells(activity);
+
+            // 4 is for the extra space and square brackets below and one extra space
+            int barWidth = maxWidth - activityDisplayCellsWidth - indentation - 4;
+
+            var sb = new StringBuilder();
+            sb.Append(PSStyle.Instance.Reverse);
+
+            // Build the status description part
+            int maxStatusWidth = barWidth - secRemainLength;
+            string statusPart = RenderAnsiStatusPart(rawUI, maxStatusWidth, out int statusPartDisplayWidth);
+
+            sb.Append(statusPart);
+
+            // Calculate padding needed
+            int emptyPadLength = barWidth - statusPartDisplayWidth - secRemainLength;
+            if (emptyPadLength > 0)
+            {
+                sb.Append(' ', emptyPadLength);
+            }
+
+            sb.Append(secRemain);
+
+            // Insert ReverseOff at the correct position for the progress bar
+            RenderAnsiReverseOff(sb, rawUI, statusPart, barWidth);
+
+            strCollection.Add(
+                StringUtil.Format(
+                    "{0}{1}{2} [{3}]{4}",
+                    indent,
+                    PSStyle.Instance.Progress.Style,
+                    activity,
+                    sb.ToString(),
+                    PSStyle.Instance.Reset));
+        }
+
+        /// <summary>
+        /// Builds the status-description portion of the Ansi progress bar, truncating it
+        /// with an ellipsis when it would exceed the available status width.
+        /// </summary>
+        /// <param name="rawUI">
+        /// The PSHostRawUserInterface used to gauge string widths.
+        /// </param>
+        /// <param name="maxStatusWidth">
+        /// The maximum number of buffer cells available for the status description.
+        /// </param>
+        /// <param name="statusPartDisplayWidth">
+        /// On return, the width in buffer cells of the produced status part.
+        /// </param>
+        /// <returns>The status description, possibly truncated with an ellipsis.</returns>
+        private string RenderAnsiStatusPart(PSHostRawUserInterface rawUI, int maxStatusWidth, out int statusPartDisplayWidth)
+        {
+            int statusDisplayWidth = rawUI.LengthInBufferCells(StatusDescription);
+
+            if (maxStatusWidth <= 0 || statusDisplayWidth <= maxStatusWidth)
+            {
+                statusPartDisplayWidth = statusDisplayWidth;
+                return StatusDescription;
+            }
+
+            int ellipsisWidth = rawUI.LengthInBufferCells(PSObjectHelper.EllipsisStr);
+            string statusPart = StringUtil.TruncateToBufferCellWidth(rawUI, StatusDescription, maxStatusWidth - ellipsisWidth) + PSObjectHelper.EllipsisStr;
+            statusPartDisplayWidth = rawUI.LengthInBufferCells(statusPart);
+            return statusPart;
+        }
+
+        /// <summary>
+        /// Appends the ReverseOff VT sequence to the rendered bar at the buffer-cell position
+        /// that corresponds to the filled portion of the progress bar, respecting character boundaries.
+        /// </summary>
+        /// <param name="sb">The StringBuilder holding the bar contents built so far.</param>
+        /// <param name="rawUI">
+        /// The PSHostRawUserInterface used to gauge string widths.
+        /// </param>
+        /// <param name="statusPart">The status text at the start of the bar.</param>
+        /// <param name="barWidth">The total width of the progress bar in buffer cells.</param>
+        private void RenderAnsiReverseOff(StringBuilder sb, PSHostRawUserInterface rawUI, string statusPart, int barWidth)
+        {
+            if (PercentComplete < 0 || PercentComplete >= 100 || barWidth <= 0)
+            {
+                sb.Append(PSStyle.Instance.ReverseOff);
+                return;
+            }
+
+            int barLength = PercentComplete * barWidth / 100;
+            if (barLength >= barWidth)
+            {
+                barLength = barWidth - 1;
+            }
+
+            // Calculate the string position where we need to insert ReverseOff.
+            // We need to find the character position that corresponds to barLength buffer cells.
+            int stringPos = PSStyle.Instance.Reverse.Length;
+            int currentCellCount = 0;
+
+            for (int i = 0; i < statusPart.Length && currentCellCount < barLength; i++)
+            {
+                currentCellCount += rawUI.LengthInBufferCells(statusPart[i]);
+                stringPos++;
+            }
+
+            // Add any padding characters.
+            int remainingCells = barLength - currentCellCount;
+            stringPos += Math.Max(0, remainingCells);
+
+            if (stringPos < sb.Length)
+            {
+                sb.Insert(stringPos, PSStyle.Instance.ReverseOff);
+            }
+            else
+            {
+                sb.Append(PSStyle.Instance.ReverseOff);
+            }
+        }
+
         /// <summary>
         /// The nodes that have this node as their parent.
         /// </summary>
-
         internal
         ArrayList
         Children;
@@ -362,7 +534,6 @@ namespace Microsoft.PowerShell
         /// space. The rendering of nodes can be progressively "compressed" into a more terse format, or not rendered at all in
         /// order to fit as many nodes as possible in the available space. The oldest nodes are compressed or skipped first.
         /// </summary>
-
         internal
         int
         Age;
@@ -370,7 +541,6 @@ namespace Microsoft.PowerShell
         /// <summary>
         /// The style in which this node should be rendered.
         /// </summary>
-
         internal
         RenderStyle
         Style = RenderStyle.FullPlus;
@@ -378,16 +548,14 @@ namespace Microsoft.PowerShell
         /// <summary>
         /// Identifies the source of the progress record.
         /// </summary>
-
         internal
-        Int64
+        long
         SourceId;
 
         /// <summary>
         /// The number of vertical BufferCells that are required to render the node in its current style.
         /// </summary>
         /// <value></value>
-
         internal int LinesRequiredMethod(PSHostRawUserInterface rawUi, int maxWidth)
         {
             Dbg.Assert(this.RecordType != ProgressRecordType.Completed, "should never render completed records");
@@ -409,6 +577,9 @@ namespace Microsoft.PowerShell
                 case RenderStyle.Invisible:
                     return 0;
 
+                case RenderStyle.Ansi:
+                    return 1;
+
                 default:
                     Dbg.Assert(false, "Unknown RenderStyle value");
                     break;
@@ -421,7 +592,6 @@ namespace Microsoft.PowerShell
         /// The number of vertical BufferCells that are required to render the node in the Full style.
         /// </summary>
         /// <value></value>
-
         private int LinesRequiredInFullStyleMethod(PSHostRawUserInterface rawUi, int maxWidth, bool isFullPlus)
         {
             // Since the fields of this instance could have been changed, we compute this on-the-fly.
@@ -479,7 +649,6 @@ namespace Microsoft.PowerShell
         /// The number of vertical BufferCells that are required to render the node in the Compact style.
         /// </summary>
         /// <value></value>
-
         private
         int
         LinesRequiredInCompactStyle
@@ -504,4 +673,3 @@ namespace Microsoft.PowerShell
         }
     }
 }   // namespace
-

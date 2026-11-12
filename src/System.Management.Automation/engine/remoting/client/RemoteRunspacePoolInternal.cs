@@ -23,7 +23,7 @@ namespace System.Management.Automation.Runspaces.Internal
     /// Class which supports pooling remote powerShell runspaces
     /// on the client.
     /// </summary>
-    internal class RemoteRunspacePoolInternal : RunspacePoolInternal, IDisposable
+    internal sealed class RemoteRunspacePoolInternal : RunspacePoolInternal
     {
         #region Constructor
 
@@ -81,7 +81,7 @@ namespace System.Management.Automation.Runspaces.Internal
                     minPoolSz.ToString(CultureInfo.InvariantCulture),
                     maxPoolSz.ToString(CultureInfo.InvariantCulture));
 
-            _connectionInfo = connectionInfo.InternalCopy();
+            _connectionInfo = connectionInfo.Clone();
 
             this.host = host;
             ApplicationArguments = applicationArguments;
@@ -111,9 +111,9 @@ namespace System.Management.Automation.Runspaces.Internal
             ConnectCommandInfo[] connectCommands, RunspaceConnectionInfo connectionInfo, PSHost host, TypeTable typeTable)
             : base(1, 1)
         {
-            if (instanceId == null)
+            if (instanceId == Guid.Empty)
             {
-                throw PSTraceSource.NewArgumentNullException("RunspacePool Guid");
+                throw PSTraceSource.NewArgumentException(nameof(instanceId));
             }
 
             if (connectCommands == null)
@@ -128,7 +128,7 @@ namespace System.Management.Automation.Runspaces.Internal
 
             if (connectionInfo is WSManConnectionInfo)
             {
-                _connectionInfo = connectionInfo.InternalCopy();
+                _connectionInfo = connectionInfo.Clone();
             }
             else
             {
@@ -271,8 +271,8 @@ namespace System.Management.Automation.Runspaces.Internal
         /// </summary>
         internal bool IsRemoteDebugStop
         {
-            set;
             get;
+            set;
         }
 
         #endregion
@@ -291,7 +291,7 @@ namespace System.Management.Automation.Runspaces.Internal
             // version 2.3 or greater.
             Version remoteProtocolVersionDeclaredByServer = PSRemotingProtocolVersion;
             if ((remoteProtocolVersionDeclaredByServer == null) ||
-                (remoteProtocolVersionDeclaredByServer < RemotingConstants.ProtocolVersionWin10RTM))
+                (remoteProtocolVersionDeclaredByServer < RemotingConstants.ProtocolVersion_2_3))
             {
                 throw PSTraceSource.NewInvalidOperationException(RunspacePoolStrings.ResetRunspaceStateNotSupportedOnServer);
             }
@@ -347,7 +347,7 @@ namespace System.Management.Automation.Runspaces.Internal
                     return true;
                 }
 
-                // sending the message should be done withing the lock
+                // sending the message should be done within the lock
                 // to ensure that multiple calls to SetMaxRunspaces
                 // will be executed on the server in the order in which
                 // they were called in the client
@@ -410,7 +410,7 @@ namespace System.Management.Automation.Runspaces.Internal
                     return true;
                 }
 
-                // sending the message should be done withing the lock
+                // sending the message should be done within the lock
                 // to ensure that multiple calls to SetMinRunspaces
                 // will be executed on the server in the order in which
                 // they were called in the client
@@ -452,7 +452,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 // return maxrunspaces
                 if (stateInfo.State == RunspacePoolState.Opened)
                 {
-                    // sending the message should be done withing the lock
+                    // sending the message should be done within the lock
                     // to ensure that multiple calls to GetAvailableRunspaces
                     // will be executed on the server in the order in which
                     // they were called in the client
@@ -679,7 +679,7 @@ namespace System.Management.Automation.Runspaces.Internal
         }
 
         private PSPrimitiveDictionary _applicationPrivateData;
-        private ManualResetEvent _applicationPrivateDataReceived = new ManualResetEvent(false);
+        private readonly ManualResetEvent _applicationPrivateDataReceived = new ManualResetEvent(false);
 
         /// <summary>
         /// This event is raised, when a host call is for a remote runspace
@@ -733,7 +733,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 {
                     // Disconnect/Connect support is currently only provided by the WSMan transport
                     // that is running PSRP protocol version 2.2 and greater.
-                    return (remoteProtocolVersionDeclaredByServer >= RemotingConstants.ProtocolVersionWin8RTM &&
+                    return (remoteProtocolVersionDeclaredByServer >= RemotingConstants.ProtocolVersion_2_2 &&
                             DataStructureHandler.EndpointSupportsDisconnect);
                 }
 
@@ -1215,7 +1215,7 @@ namespace System.Management.Automation.Runspaces.Internal
             return psCollection;
         }
 
-        ///<summary>
+        /// <summary>
         /// Returns RunspacePool capabilities.
         /// </summary>
         /// <returns>RunspacePoolCapability.</returns>
@@ -1237,11 +1237,9 @@ namespace System.Management.Automation.Runspaces.Internal
 
         internal static RunspacePool[] GetRemoteRunspacePools(RunspaceConnectionInfo connectionInfo, PSHost host, TypeTable typeTable)
         {
-            WSManConnectionInfo wsmanConnectionInfoParam = connectionInfo as WSManConnectionInfo;
-
-            // Disconnect-Connect currently only supported by WSMan.
-            if (wsmanConnectionInfoParam == null)
+            if (connectionInfo is not WSManConnectionInfo wsmanConnectionInfoParam)
             {
+                // Disconnect-Connect currently only supported by WSMan.
                 throw new NotSupportedException();
             }
 
@@ -1270,7 +1268,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 Guid shellId = Guid.Parse(pspShellId.Value.ToString());
 
                 // Filter returned items for PowerShell sessions.
-                if (strShellUri.StartsWith(WSManNativeApi.ResourceURIPrefix, StringComparison.OrdinalIgnoreCase) == false)
+                if (!strShellUri.StartsWith(WSManNativeApi.ResourceURIPrefix, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -1428,8 +1426,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 string compressionModeString = pspCompressionMode.Value as string;
                 if (compressionModeString != null)
                 {
-                    wsmanConnectionInfo.UseCompression = compressionModeString.Equals("NoCompression", StringComparison.OrdinalIgnoreCase)
-                        ? false : true;
+                    wsmanConnectionInfo.UseCompression = !compressionModeString.Equals("NoCompression", StringComparison.OrdinalIgnoreCase);
                 }
             }
 
@@ -1438,8 +1435,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 string encodingString = pspEncoding.Value as string;
                 if (encodingString != null)
                 {
-                    wsmanConnectionInfo.UseUTF16 = encodingString.Equals("UTF16", StringComparison.OrdinalIgnoreCase)
-                        ? true : false;
+                    wsmanConnectionInfo.UseUTF16 = encodingString.Equals("UTF16", StringComparison.OrdinalIgnoreCase);
                 }
             }
 
@@ -1448,8 +1444,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 string machineProfileLoadedString = pspProfile.Value as string;
                 if (machineProfileLoadedString != null)
                 {
-                    wsmanConnectionInfo.NoMachineProfile = machineProfileLoadedString.Equals("Yes", StringComparison.OrdinalIgnoreCase)
-                        ? false : true;
+                    wsmanConnectionInfo.NoMachineProfile = !machineProfileLoadedString.Equals("Yes", StringComparison.OrdinalIgnoreCase);
                 }
             }
 
@@ -1831,20 +1826,14 @@ namespace System.Management.Automation.Runspaces.Internal
         {
             // Reset DisconnectedOn/ExpiresOn
             WSManConnectionInfo wsManConnectionInfo = _connectionInfo as WSManConnectionInfo;
-            if (wsManConnectionInfo != null)
-            {
-                wsManConnectionInfo.NullDisconnectedExpiresOn();
-            }
+            wsManConnectionInfo?.NullDisconnectedExpiresOn();
         }
 
         private void UpdateDisconnectedExpiresOn()
         {
             // Set DisconnectedOn/ExpiresOn for disconnected session.
             WSManConnectionInfo wsManConnectionInfo = _connectionInfo as WSManConnectionInfo;
-            if (wsManConnectionInfo != null)
-            {
-                wsManConnectionInfo.SetDisconnectedExpiresOnToNow();
-            }
+            wsManConnectionInfo?.SetDisconnectedExpiresOnToNow();
         }
 
         /// <summary>
@@ -1881,10 +1870,10 @@ namespace System.Management.Automation.Runspaces.Internal
 
         #region Private Members
 
-        private RunspaceConnectionInfo _connectionInfo;     // connection info with which this
+        private readonly RunspaceConnectionInfo _connectionInfo;     // connection info with which this
         // runspace is created
         // data structure handler handling
-        private RunspacePoolAsyncResult _openAsyncResult;// async result object generated on
+        private RunspacePoolAsyncResult _openAsyncResult; // async result object generated on
         // CoreOpen
         private RunspacePoolAsyncResult _closeAsyncResult; // async result object generated by
         // BeginClose
@@ -1898,27 +1887,17 @@ namespace System.Management.Automation.Runspaces.Internal
         private bool _canReconnect;
         private string _friendlyName = string.Empty;
 
-        private System.Collections.Concurrent.ConcurrentStack<PowerShell> _runningPowerShells;
+        private readonly System.Collections.Concurrent.ConcurrentStack<PowerShell> _runningPowerShells;
 
         #endregion Private Members
 
         #region IDisposable
 
         /// <summary>
-        /// Public method for Dispose.
-        /// </summary>
-        public void Dispose()
-        {
-            Dispose(true);
-
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
         /// Release all resources.
         /// </summary>
         /// <param name="disposing">If true, release all managed resources.</param>
-        public override void Dispose(bool disposing)
+        protected override void Dispose(bool disposing)
         {
             // dispose the base class before disposing dataStructure handler.
             base.Dispose(disposing);
@@ -2044,7 +2023,7 @@ namespace System.Management.Automation.Runspaces.Internal
                 powerShell.AddCommand("Get-WSManInstance");
 
                 // Add parameters to enumerate commands.
-                string filterStr = string.Format(CultureInfo.InvariantCulture, "ShellId='{0}'", shellId.ToString().ToUpperInvariant());
+                string filterStr = string.Create(CultureInfo.InvariantCulture, $"ShellId='{shellId.ToString().ToUpperInvariant()}'");
                 powerShell.AddParameter("ResourceURI", @"Shell/Command");
                 powerShell.AddParameter("Enumerate", true);
                 powerShell.AddParameter("Dialect", "Selector");

@@ -2,10 +2,6 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Diagnostics;
-using System.IO;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Formatters.Binary;
 
 namespace Microsoft.Management.UI.Internal
 {
@@ -27,30 +23,8 @@ namespace Microsoft.Management.UI.Internal
         /// </returns>
         public static FilterRule DeepCopy(this FilterRule rule)
         {
-            if (rule == null)
-            {
-                throw new ArgumentNullException("rule");
-            }
-
-            Debug.Assert(rule.GetType().IsSerializable, "rule is serializable");
-
-            BinaryFormatter formatter = new BinaryFormatter(null, new StreamingContext(StreamingContextStates.Clone));
-            MemoryStream ms = new MemoryStream();
-
-            FilterRule copy = null;
-            try
-            {
-                formatter.Serialize(ms, rule);
-
-                ms.Position = 0;
-                copy = (FilterRule)formatter.Deserialize(ms);
-            }
-            finally
-            {
-                ms.Close();
-            }
-
-            return copy;
+            ArgumentNullException.ThrowIfNull(rule);
+            return (FilterRule)rule.DeepClone();
         }
     }
 }

@@ -422,7 +422,7 @@ namespace System.Management.Automation.Runspaces
             }
         }
 
-        private Pipe GetRedirectionPipe(
+        private static Pipe GetRedirectionPipe(
             PipelineResultTypes toType,
             MshCommandRuntime mcr)
         {
@@ -568,7 +568,7 @@ namespace System.Management.Automation.Runspaces
         /// property is bool, not bool? (from V1), so it should probably
         /// be deprecated, at least for internal use.
         /// </summary>
-        private bool? _useLocalScope;
+        private readonly bool? _useLocalScope;
 
         #endregion Private fields
 
@@ -662,7 +662,7 @@ namespace System.Management.Automation.Runspaces
             commandAsPSObject.Properties.Add(new PSNoteProperty(RemoteDataNameStrings.MergeUnclaimedPreviousCommandResults, this.MergeUnclaimedPreviousCommandResults));
 
             if (psRPVersion != null &&
-                psRPVersion >= RemotingConstants.ProtocolVersionWin10RTM)
+                psRPVersion >= RemotingConstants.ProtocolVersion_2_3)
             {
                 // V5 merge instructions
                 commandAsPSObject.Properties.Add(new PSNoteProperty(RemoteDataNameStrings.MergeError, MergeInstructions[(int)MergeType.Error]));
@@ -672,7 +672,7 @@ namespace System.Management.Automation.Runspaces
                 commandAsPSObject.Properties.Add(new PSNoteProperty(RemoteDataNameStrings.MergeInformation, MergeInstructions[(int)MergeType.Information]));
             }
             else if (psRPVersion != null &&
-                psRPVersion >= RemotingConstants.ProtocolVersionWin8RTM)
+                psRPVersion >= RemotingConstants.ProtocolVersion_2_2)
             {
                 // V3 merge instructions.
                 commandAsPSObject.Properties.Add(new PSNoteProperty(RemoteDataNameStrings.MergeError, MergeInstructions[(int)MergeType.Error]));
@@ -900,4 +900,3 @@ namespace System.Management.Automation.Runspaces
         }
     }
 }
-

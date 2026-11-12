@@ -55,9 +55,9 @@ namespace System.Management.Automation.Remoting
         // these callbacks are used to notify when data becomes available under
         // suc circumstances.
         private OnDataAvailableCallback _onDataAvailableCallback;
-        private SerializedDataStream.OnDataAvailableCallback _onSendCollectionDataAvailable;
+        private readonly SerializedDataStream.OnDataAvailableCallback _onSendCollectionDataAvailable;
         private bool _isHandlingCallback;
-        private object _readSyncObject = new object();
+        private readonly object _readSyncObject = new object();
 
         /// <summary>
         /// Callback that is called once a fragmented data is available to send.
@@ -88,14 +88,17 @@ namespace System.Management.Automation.Remoting
 
         internal Fragmentor Fragmentor
         {
-            get { return _fragmentor; }
+            get
+            {
+                return _fragmentor;
+            }
 
             set
             {
                 Dbg.Assert(value != null, "Fragmentor cannot be null.");
                 _fragmentor = value;
                 // create serialized streams using fragment size.
-                string[] names = Enum.GetNames(typeof(DataPriorityType));
+                string[] names = Enum.GetNames<DataPriorityType>();
                 _dataToBeSent = new SerializedDataStream[names.Length];
                 _dataSyncObjects = new object[names.Length];
                 for (int i = 0; i < names.Length; i++)
@@ -163,8 +166,8 @@ namespace System.Management.Automation.Remoting
             */
             if (_dataSyncObjects != null && _dataToBeSent != null)
             {
-                int promptResponseIndex = (int)DataPriorityType.PromptResponse;
-                int defaultIndex = (int)DataPriorityType.Default;
+                const int promptResponseIndex = (int)DataPriorityType.PromptResponse;
+                const int defaultIndex = (int)DataPriorityType.Default;
 
                 lock (_dataSyncObjects[promptResponseIndex])
                 {
@@ -217,21 +220,29 @@ namespace System.Management.Automation.Remoting
             lock (_readSyncObject)
             {
                 priorityType = DataPriorityType.Default;
-
-                // send data from which ever stream that has data directly.
+                // Send data from which ever stream that has data directly.
                 byte[] result = null;
-                result = _dataToBeSent[(int)DataPriorityType.PromptResponse].ReadOrRegisterCallback(_onSendCollectionDataAvailable);
-                priorityType = DataPriorityType.PromptResponse;
+                SerializedDataStream promptDataToBeSent = _dataToBeSent[(int)DataPriorityType.PromptResponse];
+                if (promptDataToBeSent is not null)
+                {
+                    result = promptDataToBeSent.ReadOrRegisterCallback(_onSendCollectionDataAvailable);
+                    priorityType = DataPriorityType.PromptResponse;
+                }
 
                 if (result == null)
                 {
-                    result = _dataToBeSent[(int)DataPriorityType.Default].ReadOrRegisterCallback(_onSendCollectionDataAvailable);
-                    priorityType = DataPriorityType.Default;
+                    SerializedDataStream defaultDataToBeSent = _dataToBeSent[(int)DataPriorityType.Default];
+                    if (defaultDataToBeSent is not null)
+                    {
+                        result = defaultDataToBeSent.ReadOrRegisterCallback(_onSendCollectionDataAvailable);
+                        priorityType = DataPriorityType.Default;
+                    }
                 }
-                // no data to return..so register the callback.
+
+                // No data to return..so register the callback.
                 if (result == null)
                 {
-                    // register callback.
+                    // Register callback.
                     _onDataAvailableCallback = callback;
                 }
 
@@ -290,14 +301,14 @@ namespace System.Management.Automation.Remoting
     {
         #region tracer
 
-        [TraceSourceAttribute("Transport", "Traces BaseWSManTransportManager")]
-        private static PSTraceSource s_baseTracer = PSTraceSource.GetTracer("Transport", "Traces BaseWSManTransportManager");
+        [TraceSource("Transport", "Traces BaseWSManTransportManager")]
+        private static readonly PSTraceSource s_baseTracer = PSTraceSource.GetTracer("Transport", "Traces BaseWSManTransportManager");
 
         #endregion
 
         #region Private Data
         // fragmentor used to defragment objects added to this collection.
-        private Fragmentor _defragmentor;
+        private readonly Fragmentor _defragmentor;
 
         // this stream holds incoming data..this stream doesn't know anything
         // about fragment boundaries.
@@ -311,7 +322,7 @@ namespace System.Management.Automation.Remoting
         // max deserialized object size in bytes
         private int? _maxReceivedObjectSize;
         private int _totalReceivedObjectSizeSoFar;
-        private bool _isCreateByClientTM;
+        private readonly bool _isCreateByClientTM;
 
         // this indicates if any off sync fragments can be ignored
         // this gets reset (to false) upon receiving the next "start" fragment along the stream
@@ -319,7 +330,7 @@ namespace System.Management.Automation.Remoting
 
         // objects need to cleanly release resources without
         // locking entire processing logic.
-        private object _syncObject;
+        private readonly object _syncObject;
         private bool _isDisposed;
         // holds the number of threads that are currently in
         // ProcessRawData method. This might happen only for
@@ -489,17 +500,46 @@ namespace System.Management.Automation.Remoting
                     }
 
                     int totalLengthOfFragment = 0;
+                    int totalSizeToBeReceived = 0;
 
                     try
                     {
                         totalLengthOfFragment = checked(FragmentedRemoteObject.HeaderLength + blobLength);
                     }
-                    catch (System.OverflowException)
+                    catch (OverflowException)
                     {
                         s_baseTracer.WriteLine("Fragment too big.");
                         ResetReceiveData();
                         PSRemotingTransportException e = new PSRemotingTransportException(RemotingErrorIdStrings.ObjectIsTooBig);
                         throw e;
+                    }
+
+                    // Ensure object size limit is not reached
+                    if (_maxReceivedObjectSize.HasValue)
+                    {
+                        totalSizeToBeReceived = unchecked(_totalReceivedObjectSizeSoFar + totalLengthOfFragment);
+                        if (totalSizeToBeReceived < 0 || totalSizeToBeReceived > _maxReceivedObjectSize.Value)
+                        {
+                            s_baseTracer.WriteLine("ObjectSize > MaxReceivedObjectSize. ObjectSize is {0}. MaxReceivedObjectSize is {1}",
+                                totalSizeToBeReceived, _maxReceivedObjectSize);
+                            PSRemotingTransportException e = null;
+
+                            if (_isCreateByClientTM)
+                            {
+                                e = new PSRemotingTransportException(PSRemotingErrorId.ReceivedObjectSizeExceededMaximumClient,
+                                    RemotingErrorIdStrings.ReceivedObjectSizeExceededMaximumClient,
+                                      totalSizeToBeReceived, _maxReceivedObjectSize);
+                            }
+                            else
+                            {
+                                e = new PSRemotingTransportException(PSRemotingErrorId.ReceivedObjectSizeExceededMaximumServer,
+                                    RemotingErrorIdStrings.ReceivedObjectSizeExceededMaximumServer,
+                                      totalSizeToBeReceived, _maxReceivedObjectSize);
+                            }
+
+                            ResetReceiveData();
+                            throw e;
+                        }
                     }
 
                     if (_pendingDataStream.Length < totalLengthOfFragment)
@@ -509,32 +549,10 @@ namespace System.Management.Automation.Remoting
                         return;
                     }
 
-                    // ensure object size limit is not reached
+                    // Update the real object size we received so far only when we have received the complete fragment.
                     if (_maxReceivedObjectSize.HasValue)
                     {
-                        _totalReceivedObjectSizeSoFar = unchecked(_totalReceivedObjectSizeSoFar + totalLengthOfFragment);
-                        if ((_totalReceivedObjectSizeSoFar < 0) || (_totalReceivedObjectSizeSoFar > _maxReceivedObjectSize.Value))
-                        {
-                            s_baseTracer.WriteLine("ObjectSize > MaxReceivedObjectSize. ObjectSize is {0}. MaxReceivedObjectSize is {1}",
-                                _totalReceivedObjectSizeSoFar, _maxReceivedObjectSize);
-                            PSRemotingTransportException e = null;
-
-                            if (_isCreateByClientTM)
-                            {
-                                e = new PSRemotingTransportException(PSRemotingErrorId.ReceivedObjectSizeExceededMaximumClient,
-                                    RemotingErrorIdStrings.ReceivedObjectSizeExceededMaximumClient,
-                                      _totalReceivedObjectSizeSoFar, _maxReceivedObjectSize);
-                            }
-                            else
-                            {
-                                e = new PSRemotingTransportException(PSRemotingErrorId.ReceivedObjectSizeExceededMaximumServer,
-                                    RemotingErrorIdStrings.ReceivedObjectSizeExceededMaximumServer,
-                                      _totalReceivedObjectSizeSoFar, _maxReceivedObjectSize);
-                            }
-
-                            ResetReceiveData();
-                            throw e;
-                        }
+                        _totalReceivedObjectSizeSoFar = totalSizeToBeReceived;
                     }
 
                     // appears like stream doesn't have individual position marker for read and write
@@ -550,11 +568,11 @@ namespace System.Management.Automation.Remoting
                     PSEtwLog.LogAnalyticVerbose(
                         PSEventId.ReceivedRemotingFragment, PSOpcode.Receive, PSTask.None,
                         PSKeyword.Transport | PSKeyword.UseAlwaysAnalytic,
-                        (Int64)objectId,
-                        (Int64)fragmentId,
+                        (long)objectId,
+                        (long)fragmentId,
                         sFlag ? 1 : 0,
                         eFlag ? 1 : 0,
-                        (UInt32)blobLength,
+                        (uint)blobLength,
                         new PSETWBinaryBlob(oneFragment, FragmentedRemoteObject.HeaderLength, blobLength));
 
                     byte[] extraData = null;
@@ -673,10 +691,7 @@ namespace System.Management.Automation.Remoting
         private void ResetReceiveData()
         {
             // reset resources used to store incoming data (for a single object)
-            if (_dataToProcessStream != null)
-            {
-                _dataToProcessStream.Dispose();
-            }
+            _dataToProcessStream?.Dispose();
 
             _currentObjectId = 0;
             _currentFrgId = 0;
@@ -738,9 +753,9 @@ namespace System.Management.Automation.Remoting
     {
         #region Private Data
 
-        private Fragmentor _defragmentor;
-        private ReceiveDataCollection[] _recvdData;
-        private bool _isCreateByClientTM;
+        private readonly Fragmentor _defragmentor;
+        private readonly ReceiveDataCollection[] _recvdData;
+        private readonly bool _isCreateByClientTM;
 
         #endregion
 
@@ -757,7 +772,7 @@ namespace System.Management.Automation.Remoting
         internal PriorityReceiveDataCollection(Fragmentor defragmentor, bool createdByClientTM)
         {
             _defragmentor = defragmentor;
-            string[] names = Enum.GetNames(typeof(DataPriorityType));
+            string[] names = Enum.GetNames<DataPriorityType>();
             _recvdData = new ReceiveDataCollection[names.Length];
             for (int index = 0; index < names.Length; index++)
             {

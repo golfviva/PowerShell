@@ -14,7 +14,7 @@ namespace Microsoft.PowerShell.Cmdletization.Cim
     /// <summary>
     /// Job that handles executing a WQL (in the future CQL?) query on a remote CIM server.
     /// </summary>
-    internal class QueryInstancesJob : QueryJobBase
+    internal sealed class QueryInstancesJob : QueryJobBase
     {
         private readonly string _wqlQuery;
         private readonly bool _useEnumerateInstances;
@@ -27,7 +27,7 @@ namespace Microsoft.PowerShell.Cmdletization.Cim
             var wqlQueryBuilder = new StringBuilder();
             wqlQueryBuilder.Append("SELECT * FROM ");
             wqlQueryBuilder.Append(this.JobContext.ClassName);
-            wqlQueryBuilder.Append(" ");
+            wqlQueryBuilder.Append(' ');
             wqlQueryBuilder.Append(wqlCondition);
             _wqlQuery = wqlQueryBuilder.ToString();
 

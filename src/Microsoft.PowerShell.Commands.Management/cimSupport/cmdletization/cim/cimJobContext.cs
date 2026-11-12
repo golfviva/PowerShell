@@ -9,7 +9,7 @@ using Microsoft.Management.Infrastructure;
 
 namespace Microsoft.PowerShell.Cmdletization.Cim
 {
-    internal class CimJobContext
+    internal sealed class CimJobContext
     {
         internal CimJobContext(
             CimCmdletInvocationContext cmdletInvocationContext,
@@ -22,11 +22,11 @@ namespace Microsoft.PowerShell.Cmdletization.Cim
             this.TargetObject = targetObject ?? this.ClassName;
         }
 
-        public CimCmdletInvocationContext CmdletInvocationContext { get; private set; }
+        public CimCmdletInvocationContext CmdletInvocationContext { get; }
 
-        public CimSession Session { get; private set; }
+        public CimSession Session { get; }
 
-        public object TargetObject { get; private set; }
+        public object TargetObject { get; }
 
         public string ClassName
         {

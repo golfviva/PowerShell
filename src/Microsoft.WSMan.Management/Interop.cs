@@ -23,7 +23,6 @@ namespace Microsoft.WSMan.Management
 
     #region WsManEnumFlags
     /// <summary><para>_WSManEnumFlags enumeration.</para></summary>
-
     [SuppressMessage("Microsoft.Design", "CA1027:MarkEnumsWithFlags")]
     [TypeLibType((short)0)]
     public enum WSManEnumFlags
@@ -174,7 +173,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4304)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -256,7 +255,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -313,7 +312,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -337,7 +336,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -377,7 +376,7 @@ namespace Microsoft.WSMan.Management
         /// <summary><para><c>ProxyAuthenticationUseDigest</c> method of <c>IWSManConnectionOptionsEx2</c> interface.</para></summary>
         [DispId(11)]
         int ProxyAuthenticationUseDigest();
-    };
+    }
 
     #endregion IWSManConnectionOptions
 
@@ -387,7 +386,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -451,7 +450,7 @@ namespace Microsoft.WSMan.Management
     [TypeLibType((short)4304)]
     [SuppressMessage("Microsoft.Naming", "CA1711:IdentifiersShouldNotHaveIncorrectSuffix")]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -707,7 +706,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -736,13 +735,13 @@ namespace Microsoft.WSMan.Management
         string ResourceUri
         {
             // IDL: HRESULT resourceUri (BSTR value);
+            [SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1212:PropertyAccessorsMustFollowOrder", Justification = "COM interface defines put_ before get_.")]
             [SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "resource")]
             [SuppressMessage("Microsoft.Design", "CA1056:UriPropertiesShouldNotBeStrings")]
             [DispId(1)]
             set;
 
             // IDL: HRESULT resourceUri ([out, retval] BSTR* ReturnValue);
-
             [SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "resource")]
             [SuppressMessage("Microsoft.Design", "CA1056:UriPropertiesShouldNotBeStrings")]
             [DispId(1)]
@@ -820,14 +819,16 @@ namespace Microsoft.WSMan.Management
 
         int MustUnderstandOptions
         {
+            // IDL: HRESULT MustUnderstandOptions (long value);
+
+            [SuppressMessage("StyleCop.CSharp.OrderingRules", "SA1212:PropertyAccessorsMustFollowOrder", Justification = "COM interface defines put_ before get_.")]
+            [DispId(7)]
+            set;
+
             // IDL: HRESULT MustUnderstandOptions ([out, retval] long* ReturnValue);
 
             [DispId(7)]
             get;
-            // IDL: HRESULT MustUnderstandOptions (long value);
-
-            [DispId(7)]
-            set;
         }
 
         /// <summary><para><c>ClearOptions</c> method of <c>IWSManResourceLocator</c> interface.  </para><para>Clear all options</para></summary>
@@ -862,7 +863,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)4288)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif
@@ -926,7 +927,6 @@ namespace Microsoft.WSMan.Management
         /// <param name="parameters"></param>
         /// <param name="flags"></param>
         /// <returns></returns>
-
         [SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "URI")]
         [SuppressMessage("Microsoft.Design", "CA1054:UriParametersShouldNotBeStrings", MessageId = "0#")]
         [DispId(5)]
@@ -1008,7 +1008,7 @@ namespace Microsoft.WSMan.Management
     [ComImport]
     [TypeLibType((short)400)]
 #if CORECLR
-    [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIUnknown)]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 #else
     [InterfaceTypeAttribute(ComInterfaceType.InterfaceIsIDispatch)]
 #endif

@@ -10,7 +10,7 @@ using Microsoft.Management.Infrastructure.Options;
 
 namespace Microsoft.PowerShell.Cmdletization.Cim
 {
-    internal class CimCmdletDefinitionContext
+    internal sealed class CimCmdletDefinitionContext
     {
         internal CimCmdletDefinitionContext(
             string cmdletizationClassName,
@@ -26,13 +26,13 @@ namespace Microsoft.PowerShell.Cmdletization.Cim
             _privateData = privateData;
         }
 
-        public string CmdletizationClassName { get; private set; }
+        public string CmdletizationClassName { get; }
 
-        public string CmdletizationClassVersion { get; private set; }
+        public string CmdletizationClassVersion { get; }
 
-        public Version CmdletizationModuleVersion { get; private set; }
+        public Version CmdletizationModuleVersion { get; }
 
-        public bool SupportsShouldProcess { get; private set; }
+        public bool SupportsShouldProcess { get; }
 
         private readonly IDictionary<string, string> _privateData;
 

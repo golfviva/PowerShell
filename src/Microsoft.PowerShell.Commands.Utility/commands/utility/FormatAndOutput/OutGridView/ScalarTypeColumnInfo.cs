@@ -6,9 +6,9 @@ using System.Management.Automation;
 
 namespace Microsoft.PowerShell.Commands
 {
-    internal class ScalarTypeColumnInfo : ColumnInfo
+    internal sealed class ScalarTypeColumnInfo : ColumnInfo
     {
-        private Type _type;
+        private readonly Type _type;
 
         internal ScalarTypeColumnInfo(Type type)
             : base(type.Name, type.Name)
@@ -29,7 +29,7 @@ namespace Microsoft.PowerShell.Commands
         }
     }
 
-    internal class TypeNameColumnInfo : ColumnInfo
+    internal sealed class TypeNameColumnInfo : ColumnInfo
     {
         internal TypeNameColumnInfo(string staleObjectPropertyName, string displayName)
             : base(staleObjectPropertyName, displayName)
@@ -43,9 +43,9 @@ namespace Microsoft.PowerShell.Commands
         }
     }
 
-    internal class ToStringColumnInfo : ColumnInfo
+    internal sealed class ToStringColumnInfo : ColumnInfo
     {
-        private OutGridViewCommand _parentCmdlet;
+        private readonly OutGridViewCommand _parentCmdlet;
 
         internal ToStringColumnInfo(string staleObjectPropertyName, string displayName, OutGridViewCommand parentCmdlet)
             : base(staleObjectPropertyName, displayName)
@@ -60,7 +60,7 @@ namespace Microsoft.PowerShell.Commands
         }
     }
 
-    internal class IndexColumnInfo : ColumnInfo
+    internal sealed class IndexColumnInfo : ColumnInfo
     {
         private int _index = 0;
 

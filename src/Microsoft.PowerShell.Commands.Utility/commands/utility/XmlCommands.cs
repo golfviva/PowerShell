@@ -32,7 +32,7 @@ namespace Microsoft.PowerShell.Commands
         /// </summary>
         [Parameter]
         [ValidateRange(1, int.MaxValue)]
-        public int Depth { get; set; } = 0;
+        public int Depth { get; set; }
 
         /// <summary>
         /// Mandatory file name to write to.
@@ -111,10 +111,24 @@ namespace Microsoft.PowerShell.Commands
         /// Encoding optional flag.
         /// </summary>
         [Parameter]
-        [ArgumentToEncodingTransformationAttribute()]
-        [ArgumentEncodingCompletionsAttribute]
+        [ArgumentToEncodingTransformation]
+        [ArgumentEncodingCompletions]
         [ValidateNotNullOrEmpty]
-        public Encoding Encoding { get; set; } = ClrFacade.GetDefaultEncoding();
+        public Encoding Encoding
+        {
+            get
+            {
+                return _encoding;
+            }
+
+            set
+            {
+                EncodingConversion.WarnIfObsolete(this, value);
+                _encoding = value;
+            }
+        }
+
+        private Encoding _encoding = Encoding.Default;
 
         #endregion Command Line Parameters
 
@@ -194,7 +208,10 @@ namespace Microsoft.PowerShell.Commands
         {
             Dbg.Assert(Path != null, "FileName is mandatory parameter");
 
-            if (!ShouldProcess(Path)) return;
+            if (!ShouldProcess(Path))
+            {
+                return;
+            }
 
             StreamWriter sw;
             PathUtils.MasterStreamOpen(
@@ -212,7 +229,7 @@ namespace Microsoft.PowerShell.Commands
                 );
 
             // create xml writer
-            XmlWriterSettings xmlSettings = new XmlWriterSettings();
+            XmlWriterSettings xmlSettings = new();
             xmlSettings.CloseOutput = true;
             xmlSettings.Encoding = sw.Encoding;
             xmlSettings.Indent = true;
@@ -261,7 +278,7 @@ namespace Microsoft.PowerShell.Commands
         void
         Dispose()
         {
-            if (_disposed == false)
+            if (!_disposed)
             {
                 CleanUp();
             }
@@ -314,13 +331,12 @@ namespace Microsoft.PowerShell.Commands
         private bool _disposed = false;
 
         /// <summary>
-        /// Public dispose method.
+        /// Release all resources.
         /// </summary>
         public void Dispose()
         {
             if (!_disposed)
             {
-                GC.SuppressFinalize(this);
                 if (_helper != null)
                 {
                     _helper.Dispose();
@@ -374,7 +390,7 @@ namespace Microsoft.PowerShell.Commands
         /// </summary>
         [Parameter(HelpMessage = "Specifies how many levels of contained objects should be included in the XML representation")]
         [ValidateRange(1, int.MaxValue)]
-        public int Depth { get; set; } = 0;
+        public int Depth { get; set; }
 
         /// <summary>
         /// Input Object which is written to XML format.
@@ -425,7 +441,7 @@ namespace Microsoft.PowerShell.Commands
             }
             else
             {
-                WriteObject(string.Format(CultureInfo.InvariantCulture, "<?xml version=\"1.0\" encoding=\"{0}\"?>", Encoding.UTF8.WebName));
+                WriteObject(string.Create(CultureInfo.InvariantCulture, $"<?xml version=\"1.0\" encoding=\"{Encoding.UTF8.WebName}\"?>"));
                 WriteObject("<Objects>");
             }
         }
@@ -439,8 +455,7 @@ namespace Microsoft.PowerShell.Commands
             {
                 CreateMemoryStream();
 
-                if (_serializer != null)
-                    _serializer.SerializeAsStream(InputObject);
+                _serializer?.SerializeAsStream(InputObject);
 
                 if (_serializer != null)
                 {
@@ -449,7 +464,7 @@ namespace Microsoft.PowerShell.Commands
                 }
                 // Loading to the XML Document
                 _ms.Position = 0;
-                StreamReader read = new StreamReader(_ms);
+                StreamReader read = new(_ms);
                 string data = read.ReadToEnd();
                 WriteObject(data);
 
@@ -458,8 +473,7 @@ namespace Microsoft.PowerShell.Commands
             }
             else
             {
-                if (_serializer != null)
-                    _serializer.Serialize(InputObject);
+                _serializer?.Serialize(InputObject);
             }
         }
 
@@ -484,13 +498,13 @@ namespace Microsoft.PowerShell.Commands
                 if (As.Equals("Document", StringComparison.OrdinalIgnoreCase))
                 {
                     // this is a trusted xml doc - the cmdlet generated the doc into a private memory stream
-                    XmlDocument xmldoc = new XmlDocument();
+                    XmlDocument xmldoc = new();
                     xmldoc.Load(_ms);
                     WriteObject(xmldoc);
                 }
                 else if (As.Equals("String", StringComparison.OrdinalIgnoreCase))
                 {
-                    StreamReader read = new StreamReader(_ms);
+                    StreamReader read = new(_ms);
                     string data = read.ReadToEnd();
                     WriteObject(data);
                 }
@@ -606,7 +620,7 @@ namespace Microsoft.PowerShell.Commands
         void
         Dispose()
         {
-            if (_disposed == false)
+            if (!_disposed)
             {
                 CleanUp();
             }
@@ -618,9 +632,89 @@ namespace Microsoft.PowerShell.Commands
     }
 
     /// <summary>
+    /// Implements ConvertTo-CliXml command.
+    /// </summary>
+    [Cmdlet(VerbsData.ConvertTo, "CliXml", HelpUri = "https://go.microsoft.com/fwlink/?LinkID=2280866")]
+    [OutputType(typeof(string))]
+    public sealed class ConvertToClixmlCommand : PSCmdlet
+    {
+        #region Parameters
+
+        /// <summary>
+        /// Gets or sets input objects to be converted to CliXml object.
+        /// </summary>
+        [Parameter(Position = 0, Mandatory = true, ValueFromPipeline = true)]
+        public PSObject InputObject { get; set; }
+
+        /// <summary>
+        /// Gets or sets depth of serialization.
+        /// </summary>
+        [Parameter]
+        [ValidateRange(1, int.MaxValue)]
+        public int Depth { get; set; } = 2;
+
+        #endregion Parameters
+
+        #region Private Members
+
+        private readonly List<object> _inputObjectBuffer = new();
+
+        #endregion Private Members
+
+        #region Overrides
+
+        /// <summary>
+        /// Process record.
+        /// </summary>
+        protected override void ProcessRecord()
+        {
+            _inputObjectBuffer.Add(InputObject);
+        }
+
+        /// <summary>
+        /// End Processing.
+        /// </summary>
+        protected override void EndProcessing()
+        {
+            WriteObject(PSSerializer.Serialize(_inputObjectBuffer, Depth, enumerate: true));
+        }
+
+        #endregion Overrides
+    }
+
+    /// <summary>
+    /// Implements ConvertFrom-CliXml command.
+    /// </summary>
+    [Cmdlet(VerbsData.ConvertFrom, "CliXml", HelpUri = "https://go.microsoft.com/fwlink/?LinkID=2280770")]
+    public sealed class ConvertFromClixmlCommand : PSCmdlet
+    {
+        #region Parameters
+
+        /// <summary>
+        /// Gets or sets input object which is written in CliXml format.
+        /// </summary>
+        [Parameter(Position = 0, Mandatory = true, ValueFromPipeline = true)]
+        public string InputObject { get; set; }
+
+        #endregion Parameters
+
+        #region Overrides
+
+        /// <summary>
+        /// Process record.
+        /// </summary>
+        protected override void ProcessRecord()
+        {
+            WriteObject(PSSerializer.Deserialize(InputObject));
+        }
+
+        #endregion Overrides
+    }
+
+    /// <summary>
     /// Helper class to import single XML file.
     /// </summary>
-    internal class ImportXmlHelper : IDisposable
+    internal sealed class ImportXmlHelper : IDisposable
     {
         #region constructor
 
@@ -633,7 +727,7 @@ namespace Microsoft.PowerShell.Commands
         /// Reference to cmdlet which is using this helper class.
         /// </summary>
         private readonly PSCmdlet _cmdlet;
-        private bool _isLiteralPath;
+        private readonly bool _isLiteralPath;
 
         internal ImportXmlHelper(string fileName, PSCmdlet cmdlet, bool isLiteralPath)
         {
@@ -705,7 +799,7 @@ namespace Microsoft.PowerShell.Commands
         /// </summary>
         public void Dispose()
         {
-            if (_disposed == false)
+            if (!_disposed)
             {
                 CleanUp();
             }
@@ -749,12 +843,10 @@ namespace Microsoft.PowerShell.Commands
                 while (!_deserializer.Done() && count < first)
                 {
                     object result = _deserializer.Deserialize();
-                    PSObject psObject = result as PSObject;
 
-                    if (psObject != null)
+                    if (result is PSObject psObject)
                     {
-                        ICollection c = psObject.BaseObject as ICollection;
-                        if (c != null)
+                        if (psObject.BaseObject is ICollection c)
                         {
                             foreach (object o in c)
                             {
@@ -787,19 +879,13 @@ namespace Microsoft.PowerShell.Commands
             }
         }
 
-        internal void Stop()
-        {
-            if (_deserializer != null)
-            {
-                _deserializer.Stop();
-            }
-        }
+        internal void Stop() => _deserializer?.Stop();
     }
 
     #region Select-Xml
-    ///<summary>
-    ///This cmdlet is used to search an xml document based on the XPath Query.
-    ///</summary>
+    /// <summary>
+    /// This cmdlet is used to search an xml document based on the XPath Query.
+    /// </summary>
     [Cmdlet(VerbsCommon.Select, "Xml", DefaultParameterSetName = "Xml", HelpUri = "https://go.microsoft.com/fwlink/?LinkID=2097031")]
     [OutputType(typeof(SelectXmlInfo))]
     public class SelectXmlCommand : PSCmdlet
@@ -822,7 +908,10 @@ namespace Microsoft.PowerShell.Commands
         [Alias("PSPath", "LP")]
         public string[] LiteralPath
         {
-            get { return Path; }
+            get
+            {
+                return Path;
+            }
 
             set
             {
@@ -878,7 +967,7 @@ namespace Microsoft.PowerShell.Commands
 
             foreach (XmlNode foundXmlNode in foundXmlNodes)
             {
-                SelectXmlInfo selectXmlInfo = new SelectXmlInfo();
+                SelectXmlInfo selectXmlInfo = new();
                 selectXmlInfo.Node = foundXmlNode;
                 selectXmlInfo.Pattern = XPath;
                 selectXmlInfo.Path = filePath;
@@ -954,8 +1043,8 @@ namespace Microsoft.PowerShell.Commands
                 filePath,
                 exception.Message);
 
-            ArgumentException argumentException = new ArgumentException(errorMessage, exception);
-            ErrorRecord errorRecord = new ErrorRecord(argumentException, "ProcessingFile", ErrorCategory.InvalidArgument, filePath);
+            ArgumentException argumentException = new(errorMessage, exception);
+            ErrorRecord errorRecord = new(argumentException, "ProcessingFile", ErrorCategory.InvalidArgument, filePath);
 
             this.WriteError(errorRecord);
         }
@@ -982,15 +1071,15 @@ namespace Microsoft.PowerShell.Commands
                 catch (NullReferenceException)
                 {
                     string message = StringUtil.Format(UtilityCommonStrings.SearchXMLPrefixNullError);
-                    InvalidOperationException e = new InvalidOperationException(message);
-                    ErrorRecord er = new ErrorRecord(e, "PrefixError", ErrorCategory.InvalidOperation, namespacetable);
+                    InvalidOperationException e = new(message);
+                    ErrorRecord er = new(e, "PrefixError", ErrorCategory.InvalidOperation, namespacetable);
                     WriteError(er);
                 }
                 catch (ArgumentNullException)
                 {
                     string message = StringUtil.Format(UtilityCommonStrings.SearchXMLPrefixNullError);
-                    InvalidOperationException e = new InvalidOperationException(message);
-                    ErrorRecord er = new ErrorRecord(e, "PrefixError", ErrorCategory.InvalidOperation, namespacetable);
+                    InvalidOperationException e = new(message);
+                    ErrorRecord er = new(e, "PrefixError", ErrorCategory.InvalidOperation, namespacetable);
                     WriteError(er);
                 }
             }
@@ -1019,7 +1108,7 @@ namespace Microsoft.PowerShell.Commands
                 (ParameterSetName.Equals("LiteralPath", StringComparison.OrdinalIgnoreCase))))
             {
                 // If any file not resolved, execution stops. this is to make consistent with select-string.
-                List<string> fullresolvedPaths = new List<string>();
+                List<string> fullresolvedPaths = new();
                 foreach (string fpath in Path)
                 {
                     if (_isLiteralPath)
@@ -1035,8 +1124,8 @@ namespace Microsoft.PowerShell.Commands
                         {
                             // Cannot open File error
                             string message = StringUtil.Format(UtilityCommonStrings.FileOpenError, provider.FullName);
-                            InvalidOperationException e = new InvalidOperationException(message);
-                            ErrorRecord er = new ErrorRecord(e, "ProcessingFile", ErrorCategory.InvalidOperation, fpath);
+                            InvalidOperationException e = new(message);
+                            ErrorRecord er = new(e, "ProcessingFile", ErrorCategory.InvalidOperation, fpath);
                             WriteError(er);
                             continue;
                         }

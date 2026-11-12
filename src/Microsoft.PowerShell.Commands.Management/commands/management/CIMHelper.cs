@@ -9,8 +9,6 @@ using Microsoft.Management.Infrastructure;
 
 namespace Microsoft.PowerShell.Commands
 {
-    using Extensions;
-
     internal static class CIMHelper
     {
         internal static class ClassNames
@@ -79,14 +77,13 @@ namespace Microsoft.PowerShell.Commands
         /// </remarks>
         internal static T GetFirst<T>(CimSession session, string nameSpace, string wmiClassName) where T : class, new()
         {
-            if (string.IsNullOrEmpty(wmiClassName))
-                throw new ArgumentException("String argument may not be null or empty", nameof(wmiClassName));
+            ArgumentException.ThrowIfNullOrEmpty(wmiClassName);
 
             try
             {
                 var type = typeof(T);
-                var binding = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-                T rv = new T();
+                const BindingFlags binding = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                T rv = new();
 
                 using (var instance = session.QueryFirstInstance(nameSpace, CIMHelper.WqlQueryAll(wmiClassName)))
                 {
@@ -132,8 +129,7 @@ namespace Microsoft.PowerShell.Commands
         /// </remarks>
         internal static T[] GetAll<T>(CimSession session, string nameSpace, string wmiClassName) where T : class, new()
         {
-            if (string.IsNullOrEmpty(wmiClassName))
-                throw new ArgumentException("String argument may not be null or empty", nameof(wmiClassName));
+            ArgumentException.ThrowIfNullOrEmpty(wmiClassName);
 
             var rv = new List<T>();
 
@@ -144,11 +140,11 @@ namespace Microsoft.PowerShell.Commands
                 if (instances != null)
                 {
                     var type = typeof(T);
-                    var binding = BindingFlags.Public | BindingFlags.Instance;
+                    const BindingFlags binding = BindingFlags.Public | BindingFlags.Instance;
 
                     foreach (var instance in instances)
                     {
-                        T objT = new T();
+                        T objT = new();
 
                         using (instance)
                         {
@@ -239,11 +235,6 @@ namespace Microsoft.PowerShell.Commands
             return string.Join(@"\\", path.Split('\\'));
         }
     }
-}
-
-namespace Extensions
-{
-    using Microsoft.PowerShell.Commands;
 
     internal static class CIMExtensions
     {
@@ -319,12 +310,12 @@ namespace Extensions
 
         internal static T[] GetAll<T>(this CimSession session, string wmiClassName) where T : class, new()
         {
-            return Microsoft.PowerShell.Commands.CIMHelper.GetAll<T>(session, wmiClassName);
+            return CIMHelper.GetAll<T>(session, wmiClassName);
         }
 
         internal static T[] GetAll<T>(this CimSession session, string wmiNamespace, string wmiClassName) where T : class, new()
         {
-            return Microsoft.PowerShell.Commands.CIMHelper.GetAll<T>(session, wmiNamespace, wmiClassName);
+            return CIMHelper.GetAll<T>(session, wmiNamespace, wmiClassName);
         }
     }
 }

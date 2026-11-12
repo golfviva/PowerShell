@@ -47,11 +47,15 @@ namespace System.Management.Automation.Language
         internal IsSafeValueVisitor(GetSafeValueVisitor.SafeValueContext safeValueContext)
         {
             _safeValueContext = safeValueContext;
+
+            bool skipSizeCheck = safeValueContext is GetSafeValueVisitor.SafeValueContext.SkipHashtableSizeCheck;
+            _maxVisitCount = skipSizeCheck ? uint.MaxValue : 5000;
+            _maxHashtableKeyCount = skipSizeCheck ? int.MaxValue : 500;
         }
 
         internal bool IsAstSafe(Ast ast)
         {
-            if ((bool)ast.Accept(this) && _visitCount < MaxVisitCount)
+            if ((bool)ast.Accept(this) && _visitCount < _maxVisitCount)
             {
                 return true;
             }
@@ -65,8 +69,8 @@ namespace System.Management.Automation.Language
         // This is a check of the number of visits
         private uint _visitCount = 0;
 
-        private const uint MaxVisitCount = 5000;
-        private const int MaxHashtableKeyCount = 500;
+        private readonly uint _maxVisitCount;
+        private readonly int _maxHashtableKeyCount;
 
         // Used to determine if we are being called within a GetPowerShell() context,
         // which does some additional security verification outside of the scope of
@@ -330,7 +334,7 @@ namespace System.Management.Automation.Language
 
         public object VisitHashtable(HashtableAst hashtableAst)
         {
-            if (hashtableAst.KeyValuePairs.Count > MaxHashtableKeyCount)
+            if (hashtableAst.KeyValuePairs.Count > _maxHashtableKeyCount)
             {
                 return false;
             }
@@ -356,13 +360,14 @@ namespace System.Management.Automation.Language
      * except in the case of handling the unary operator
      * ExecutionContext is provided to ensure we can resolve variables
      */
-    internal class GetSafeValueVisitor : ICustomAstVisitor2
+    internal sealed class GetSafeValueVisitor : ICustomAstVisitor2
     {
         internal enum SafeValueContext
         {
             Default,
             GetPowerShell,
-            ModuleAnalysis
+            ModuleAnalysis,
+            SkipHashtableSizeCheck,
         }
 
         // future proofing
@@ -371,6 +376,7 @@ namespace System.Management.Automation.Language
         public static object GetSafeValue(Ast ast, ExecutionContext context, SafeValueContext safeValueContext)
         {
             t_context = context;
+
             if (IsSafeValueVisitor.IsAstSafe(ast, safeValueContext))
             {
                 return ast.Accept(new GetSafeValueVisitor());
@@ -480,7 +486,7 @@ namespace System.Management.Automation.Language
         // this can throw, but there really isn't useful information we can add, as the
         // offending expression will be presented in the case of any failure
         //
-        private object GetSingleValueFromTarget(object target, object index)
+        private static object GetSingleValueFromTarget(object target, object index)
         {
             var targetString = target as string;
             if (targetString != null)
@@ -517,7 +523,7 @@ namespace System.Management.Automation.Language
             throw new Exception();
         }
 
-        private object GetIndexedValueFromTarget(object target, object index)
+        private static object GetIndexedValueFromTarget(object target, object index)
         {
             var indexArray = index as object[];
             return indexArray != null ? ((object[])indexArray).Select(i => GetSingleValueFromTarget(target, i)).ToArray() : GetSingleValueFromTarget(target, index);
@@ -528,7 +534,8 @@ namespace System.Management.Automation.Language
             // Get the value of the index and value and call the compiler
             var index = indexExpressionAst.Index.Accept(this);
             var target = indexExpressionAst.Target.Accept(this);
-            if (index == null || target == null)
+
+            if (index is null || target is null)
             {
                 throw new ArgumentNullException(nameof(indexExpressionAst));
             }
@@ -546,10 +553,7 @@ namespace System.Management.Automation.Language
                 ofs = t_context.SessionState.PSVariable.GetValue("OFS") as string;
             }
 
-            if (ofs == null)
-            {
-                ofs = " ";
-            }
+            ofs ??= " ";
 
             for (int offset = 0; offset < safeValues.Length; offset++)
             {

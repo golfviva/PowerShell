@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 using System;
 using System.Management.Automation.Internal;
 using System.Text;
@@ -19,7 +22,7 @@ namespace PSTests.Parallel
                 string publicKey = cryptoClient.GetPublicKeyAsBase64EncodedString();
                 cryptoServer.ImportPublicKeyFromBase64EncodedString(publicKey); // sent to and imported by server
 
-                // generate, export, import session key 
+                // generate, export, import session key
                 cryptoServer.GenerateSessionKey();   // server provides the session key?
                 string sessionKey = cryptoServer.SafeExportSessionKey();
                 cryptoClient.ImportSessionKeyFromBase64EncodedString(sessionKey);

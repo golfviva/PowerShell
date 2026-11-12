@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -21,6 +20,8 @@ namespace System.Management.Automation
         #region Const Members
 
         internal const string EngineSource = "PSEngine";
+        internal const string PSSerializeJSONLongEnumAsNumber = nameof(PSSerializeJSONLongEnumAsNumber);
+        internal const string PSProfileDSCResource = "PSProfileDSCResource";
 
         #endregion
 
@@ -104,30 +105,22 @@ namespace System.Management.Automation
                     description: "Replace the old FileSystemProvider with cleaner design and faster code"),
                 */
                 new ExperimentalFeature(
-                    name: "PSImplicitRemotingBatching",
-                    description: "Batch implicit remoting proxy commands to improve performance"),
+                    name: "PSLoadAssemblyFromNativeCode",
+                    description: "Expose an API to allow assembly loading from native code"),
                 new ExperimentalFeature(
-                    name: "PSCommandNotFoundSuggestion",
-                    description: "Recommend potential commands based on fuzzy search on a CommandNotFoundException"),
-#if UNIX
+                    name: PSSerializeJSONLongEnumAsNumber,
+                    description: "Serialize enums based on long or ulong as an numeric value rather than the string representation when using ConvertTo-Json."
+                ),
                 new ExperimentalFeature(
-                    name: "PSUnixFileStat",
-                    description: "Provide unix permission information for files and directories"),
-#endif
-                new ExperimentalFeature(
-                    name: "PSNullConditionalOperators",
-                    description: "Support the null conditional member access operators in PowerShell language"),
-                new ExperimentalFeature(
-                    name: "PSCultureInvariantReplaceOperator",
-                    description: "Use culture invariant to-string convertor for lval in replace operator"),
-                new ExperimentalFeature(
-                    name: "PSNativePSPathResolution",
-                    description: "Convert PSPath to filesystem path, if possible, for native commands"),
+                    name: PSProfileDSCResource,
+                    description: "DSC v3 resources for managing PowerShell profile."
+                )
             };
+
             EngineExperimentalFeatures = new ReadOnlyCollection<ExperimentalFeature>(engineFeatures);
 
             // Initialize the readonly dictionary 'EngineExperimentalFeatureMap'.
-            var engineExpFeatureMap = engineFeatures.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
+            var engineExpFeatureMap = engineFeatures.ToDictionary(static f => f.Name, StringComparer.OrdinalIgnoreCase);
             EngineExperimentalFeatureMap = new ReadOnlyDictionary<string, ExperimentalFeature>(engineExpFeatureMap);
 
             // Initialize the readonly hashset 'EnabledExperimentalFeatureNames'.
@@ -148,13 +141,30 @@ namespace System.Management.Automation
         }
 
         /// <summary>
+        /// We need to notify which features were not enabled.
+        /// </summary>
+        private static void SendTelemetryForDeactivatedFeatures(ReadOnlyBag<string> enabledFeatures)
+        {
+            foreach (var feature in EngineExperimentalFeatures)
+            {
+                if (!enabledFeatures.Contains(feature.Name))
+                {
+                    ApplicationInsightsTelemetry.SendTelemetryMetric(TelemetryType.ExperimentalEngineFeatureDeactivation, feature.Name);
+                }
+            }
+        }
+
+        /// <summary>
         /// Process the array of enabled feature names retrieved from configuration.
         /// Ignore invalid feature names and unavailable engine feature names, and
         /// return an ReadOnlyBag of the valid enabled feature names.
         /// </summary>
         private static ReadOnlyBag<string> ProcessEnabledFeatures(string[] enabledFeatures)
         {
-            if (enabledFeatures.Length == 0) { return ReadOnlyBag<string>.Empty; }
+            if (enabledFeatures.Length == 0)
+            {
+                return ReadOnlyBag<string>.Empty;
+            }
 
             var list = new List<string>(enabledFeatures.Length);
             foreach (string name in enabledFeatures)
@@ -185,7 +195,9 @@ namespace System.Management.Automation
                 }
             }
 
-            return new ReadOnlyBag<string>(new HashSet<string>(list, StringComparer.OrdinalIgnoreCase));
+            ReadOnlyBag<string> features = new(new HashSet<string>(list, StringComparer.OrdinalIgnoreCase));
+            SendTelemetryForDeactivatedFeatures(features);
+            return features;
         }
 
         /// <summary>
@@ -342,20 +354,21 @@ namespace System.Management.Automation
         {
             if (string.IsNullOrEmpty(experimentName))
             {
-                string paramName = nameof(experimentName);
+                const string paramName = nameof(experimentName);
                 throw PSTraceSource.NewArgumentNullException(paramName, Metadata.ArgumentNullOrEmpty, paramName);
             }
 
             if (experimentAction == ExperimentAction.None)
             {
-                string paramName = nameof(experimentAction);
-                string invalidMember = nameof(ExperimentAction.None);
+                const string paramName = nameof(experimentAction);
+                const string invalidMember = nameof(ExperimentAction.None);
                 string validMembers = StringUtil.Format("{0}, {1}", ExperimentAction.Hide, ExperimentAction.Show);
                 throw PSTraceSource.NewArgumentException(paramName, Metadata.InvalidEnumArgument, invalidMember, paramName, validMembers);
             }
         }
 
         internal bool ToHide => EffectiveAction == ExperimentAction.Hide;
+
         internal bool ToShow => EffectiveAction == ExperimentAction.Show;
 
         /// <summary>

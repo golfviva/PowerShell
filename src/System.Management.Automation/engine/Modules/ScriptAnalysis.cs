@@ -14,7 +14,6 @@ namespace System.Management.Automation
     /// <summary>
     /// Class describing a PowerShell module...
     /// </summary>
-    [Serializable]
     internal class ScriptAnalysis
     {
         internal static ScriptAnalysis Analyze(string path, ExecutionContext context)
@@ -41,7 +40,7 @@ namespace System.Management.Automation
                 // So eat the invalid operation
             }
 
-            string scriptContent = ReadScript(path);
+            string scriptContent = File.ReadAllText(path, Encoding.Default);
 
             ParseError[] errors;
             var moduleAst = (new Parser()).Parse(path, scriptContent, null, out errors, ParseMode.ModuleAnalysis);
@@ -90,25 +89,16 @@ namespace System.Management.Automation
             return result;
         }
 
-        internal static string ReadScript(string path)
-        {
-            using (FileStream readerStream = new FileStream(path, FileMode.Open, FileAccess.Read))
-            {
-                Encoding defaultEncoding = ClrFacade.GetDefaultEncoding();
-                Microsoft.Win32.SafeHandles.SafeFileHandle safeFileHandle = readerStream.SafeFileHandle;
-
-                using (StreamReader scriptReader = new StreamReader(readerStream, defaultEncoding))
-                {
-                    return scriptReader.ReadToEnd();
-                }
-            }
-        }
-
         internal List<string> DiscoveredExports { get; set; }
+
         internal Dictionary<string, string> DiscoveredAliases { get; set; }
+
         internal List<RequiredModuleInfo> DiscoveredModules { get; set; }
+
         internal List<string> DiscoveredCommandFilters { get; set; }
+
         internal bool AddsSelfToPath { get; set; }
+
         internal List<TypeDefinitionAst> DiscoveredClasses { get; set; }
     }
 
@@ -160,11 +150,17 @@ namespace System.Management.Automation
         private readonly bool _forCompletion;
 
         internal List<string> DiscoveredExports { get; set; }
+
         internal List<RequiredModuleInfo> DiscoveredModules { get; set; }
+
         internal Dictionary<string, FunctionDefinitionAst> DiscoveredFunctions { get; set; }
+
         internal Dictionary<string, string> DiscoveredAliases { get; set; }
+
         internal List<string> DiscoveredCommandFilters { get; set; }
+
         internal bool AddsSelfToPath { get; set; }
+
         internal List<TypeDefinitionAst> DiscoveredClasses { get; set; }
 
         public override AstVisitAction VisitTypeDefinition(TypeDefinitionAst typeDefinitionAst)
@@ -268,10 +264,22 @@ namespace System.Management.Automation
         //  - Exporting module members
         public override AstVisitAction VisitCommand(CommandAst commandAst)
         {
-            string commandName =
-                commandAst.GetCommandName() ??
-                GetSafeValueVisitor.GetSafeValue(commandAst.CommandElements[0], null, GetSafeValueVisitor.SafeValueContext.ModuleAnalysis) as string;
+            string commandName = commandAst.GetCommandName();
+            if (commandName is null)
+            {
+                // GetCommandName only works if the name is a string constant. GetSafeValueVistor can evaluate some safe dynamic expressions
+                try
+                {
+                    commandName = GetSafeValueVisitor.GetSafeValue(commandAst.CommandElements[0], null, GetSafeValueVisitor.SafeValueContext.ModuleAnalysis) as string;
+                }
+                catch (ParseException)
+                {
+                    // The script is invalid so we can't use GetSafeValue to get the name either.
+                }
+            }
 
+            // We couldn't get the name of the command. Either it's an anonymous scriptblock: & {"Some script"}
+            // Or it's a dynamic expression we couldn't safely resolve.
             if (commandName == null)
                 return AstVisitAction.SkipChildren;
 
@@ -335,10 +343,7 @@ namespace System.Management.Automation
 
                 List<string> commandsToPostFilter = new List<string>();
 
-                Action<string> onEachCommand = importedCommandName =>
-                {
-                    commandsToPostFilter.Add(importedCommandName);
-                };
+                Action<string> onEachCommand = importedCommandName => commandsToPostFilter.Add(importedCommandName);
 
                 // Process any exports from the module that we determine from
                 // the -Function, -Cmdlet, or -Alias parameters
@@ -425,9 +430,12 @@ namespace System.Management.Automation
             return AstVisitAction.SkipChildren;
         }
 
-        private void ProcessCmdletArguments(object value, Action<string> onEachArgument)
+        private static void ProcessCmdletArguments(object value, Action<string> onEachArgument)
         {
-            if (value == null) return;
+            if (value == null)
+            {
+                return;
+            }
 
             var commandName = value as string;
             if (commandName != null)
@@ -454,7 +462,7 @@ namespace System.Management.Automation
         //
         // It also only populates the bound parameters for a limited set of parameters needed
         // for module analysis.
-        private Hashtable DoPsuedoParameterBinding(CommandAst commandAst, string commandName)
+        private static Hashtable DoPsuedoParameterBinding(CommandAst commandAst, string commandName)
         {
             var result = new Hashtable(StringComparer.OrdinalIgnoreCase);
 
@@ -547,9 +555,9 @@ namespace System.Management.Automation
             return result;
         }
 
-        private static Dictionary<string, ParameterBindingInfo> s_parameterBindingInfoTable;
+        private static readonly Dictionary<string, ParameterBindingInfo> s_parameterBindingInfoTable;
 
-        private class ParameterBindingInfo
+        private sealed class ParameterBindingInfo
         {
             internal ParameterInfo[] parameterInfo;
         }
@@ -563,10 +571,10 @@ namespace System.Management.Automation
 
     // Class to keep track of modules we need to import, and commands that should
     // be filtered out of them.
-    [Serializable]
     internal class RequiredModuleInfo
     {
         internal string Name { get; set; }
+
         internal List<string> CommandsToPostFilter { get; set; }
     }
 }

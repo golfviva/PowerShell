@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PSTests.Internal;
 using Xunit;
 
 namespace PSTests.Sequential
@@ -96,18 +97,27 @@ namespace PSTests.Sequential
 
         public void Dispose()
         {
-            CleanupConfigFiles();
-            if (systemWideConfigBackupFile != null)
-            {
-                File.Move(systemWideConfigBackupFile, systemWideConfigFile);
-            }
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
-            if (currentUserConfigBackupFile != null)
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
             {
-                File.Move(currentUserConfigBackupFile, currentUserConfigFile);
-            }
+                CleanupConfigFiles();
+                if (systemWideConfigBackupFile != null)
+                {
+                    File.Move(systemWideConfigBackupFile, systemWideConfigFile);
+                }
 
-            InternalTestHooks.BypassGroupPolicyCaching = originalTestHookValue;
+                if (currentUserConfigBackupFile != null)
+                {
+                    File.Move(currentUserConfigBackupFile, currentUserConfigFile);
+                }
+
+                InternalTestHooks.BypassGroupPolicyCaching = originalTestHookValue;
+            }
         }
 
         internal PowerShellPolicies SystemWidePolicies
@@ -356,9 +366,47 @@ namespace PSTests.Sequential
             CreateEmptyFile(currentUserConfigFile);
         }
 
-        private void CreateEmptyFile(string fileName)
+        private static void CreateEmptyFile(string fileName)
         {
             File.Create(fileName).Dispose();
+        }
+
+        public void SetupConfigFile5()
+        {
+            CleanupConfigFiles();
+
+            // System wide config file is broken
+            CreateBrokenConfigFile(systemWideConfigFile);
+
+            // Current user config file is broken
+            CreateBrokenConfigFile(currentUserConfigFile);
+        }
+
+        public void SetupBrokenCurrentUserConfigOnly()
+        {
+            CleanupConfigFiles();
+
+            // Only the per-user config file is broken; the system-wide file is absent.
+            // Used to verify the #27370 fail-open path for ConfigScope.CurrentUser.
+            CreateBrokenConfigFile(currentUserConfigFile);
+        }
+
+        public void SetupTypeMismatchedCurrentUserConfig()
+        {
+            CleanupConfigFiles();
+
+            // Per-user config is syntactically valid JSON, but PowerShellPolicies has the
+            // wrong nested shape: ScriptExecution should be an object but is a string.
+            // This triggers JsonSerializationException inside jToken.ToObject<T>() and
+            // exercises the per-key fail-open path for #27370.
+            File.WriteAllText(
+                currentUserConfigFile,
+                "{ \"PowerShellPolicies\": { \"ScriptExecution\": \"not-an-object\" } }");
+        }
+
+        private static void CreateBrokenConfigFile(string fileName)
+        {
+            File.WriteAllText(fileName, "[abbra");
         }
 
         internal void ForceReadingFromFile()
@@ -375,14 +423,14 @@ namespace PSTests.Sequential
 
     public class PowerShellPolicyTests : IClassFixture<PowerShellPolicyFixture>
     {
-        private PowerShellPolicyFixture fixture;
+        private readonly PowerShellPolicyFixture fixture;
 
         public PowerShellPolicyTests(PowerShellPolicyFixture fixture)
         {
             this.fixture = fixture;
         }
 
-        [Fact, TestPriority(1)]
+        [Fact, Priority(1)]
         public void PowerShellConfig_GetPowerShellPolicies_BothConfigFilesNotEmpty()
         {
             fixture.SetupConfigFile1();
@@ -398,7 +446,7 @@ namespace PSTests.Sequential
             fixture.CompareTwoPolicies(userPolicies, fixture.CurrentUserPolicies);
         }
 
-        [Fact, TestPriority(2)]
+        [Fact, Priority(2)]
         public void PowerShellConfig_GetPowerShellPolicies_EmptyUserConfig()
         {
             fixture.SetupConfigFile2();
@@ -413,7 +461,7 @@ namespace PSTests.Sequential
             fixture.CompareTwoPolicies(sysPolicies, fixture.SystemWidePolicies);
         }
 
-        [Fact, TestPriority(3)]
+        [Fact, Priority(3)]
         public void PowerShellConfig_GetPowerShellPolicies_EmptySystemConfig()
         {
             fixture.SetupConfigFile3();
@@ -428,7 +476,7 @@ namespace PSTests.Sequential
             fixture.CompareTwoPolicies(userPolicies, fixture.CurrentUserPolicies);
         }
 
-        [Fact, TestPriority(4)]
+        [Fact, Priority(4)]
         public void PowerShellConfig_GetPowerShellPolicies_BothConfigFilesEmpty()
         {
             fixture.SetupConfigFile4();
@@ -441,7 +489,7 @@ namespace PSTests.Sequential
             Assert.Null(userPolicies);
         }
 
-        [Fact, TestPriority(5)]
+        [Fact, Priority(5)]
         public void PowerShellConfig_GetPowerShellPolicies_BothConfigFilesNotExist()
         {
             fixture.CleanupConfigFiles();
@@ -454,7 +502,7 @@ namespace PSTests.Sequential
             Assert.Null(userPolicies);
         }
 
-        [Fact, TestPriority(6)]
+        [Fact, Priority(6)]
         public void Utils_GetPolicySetting_BothConfigFilesNotEmpty()
         {
             fixture.SetupConfigFile1();
@@ -553,7 +601,7 @@ namespace PSTests.Sequential
             fixture.CompareConsoleSessionConfiguration(consoleSessionConfiguration, fixture.SystemWidePolicies.ConsoleSessionConfiguration);
         }
 
-        [Fact, TestPriority(7)]
+        [Fact, Priority(7)]
         public void Utils_GetPolicySetting_EmptyUserConfig()
         {
             fixture.SetupConfigFile2();
@@ -652,7 +700,7 @@ namespace PSTests.Sequential
             fixture.CompareConsoleSessionConfiguration(consoleSessionConfiguration, fixture.SystemWidePolicies.ConsoleSessionConfiguration);
         }
 
-        [Fact, TestPriority(8)]
+        [Fact, Priority(8)]
         public void Utils_GetPolicySetting_EmptySystemConfig()
         {
             fixture.SetupConfigFile3();
@@ -752,7 +800,7 @@ namespace PSTests.Sequential
             fixture.CompareConsoleSessionConfiguration(consoleSessionConfiguration, null);
         }
 
-        [Fact, TestPriority(9)]
+        [Fact, Priority(9)]
         public void Utils_GetPolicySetting_BothConfigFilesEmpty()
         {
             fixture.SetupConfigFile4();
@@ -852,7 +900,7 @@ namespace PSTests.Sequential
             fixture.CompareConsoleSessionConfiguration(consoleSessionConfiguration, null);
         }
 
-        [Fact, TestPriority(10)]
+        [Fact, Priority(10)]
         public void Utils_GetPolicySetting_BothConfigFilesNotExist()
         {
             fixture.CleanupConfigFiles();
@@ -950,6 +998,107 @@ namespace PSTests.Sequential
 
             consoleSessionConfiguration = Utils.GetPolicySetting<ConsoleSessionConfiguration>(Utils.CurrentUserThenSystemWideConfig);
             fixture.CompareConsoleSessionConfiguration(consoleSessionConfiguration, null);
+        }
+
+        [Fact]
+        [Priority(11)]
+        public void PowerShellConfig_BrokenSystemConfig_Throws_BrokenCurrentUserConfig_FallsBack()
+        {
+            fixture.SetupConfigFile5();
+            fixture.ForceReadingFromFile();
+
+            // Broken system-wide config still hard-fails (admin-owned, security-relevant).
+            Assert.Throws<System.Management.Automation.PSInvalidOperationException>(() => PowerShellConfig.Instance.GetPowerShellPolicies(ConfigScope.AllUsers));
+
+            // Broken per-user config falls back to defaults (#27370).
+            PowerShellPolicies currentUserPolicies = PowerShellConfig.Instance.GetPowerShellPolicies(ConfigScope.CurrentUser);
+            Assert.Null(currentUserPolicies);
+        }
+
+        [Fact]
+        [Priority(12)]
+        public void PowerShellConfig_BrokenCurrentUserConfig_FallsBackToDefaults()
+        {
+            fixture.SetupBrokenCurrentUserConfigOnly();
+            fixture.ForceReadingFromFile();
+
+            // ExecutionPolicy returns null (caller falls back to GP / registry / Restricted).
+            string execPolicy = PowerShellConfig.Instance.GetExecutionPolicy(ConfigScope.CurrentUser, "Microsoft.PowerShell");
+            Assert.Null(execPolicy);
+
+            // Module path returns null (caller uses built-in defaults).
+            string modulePath = PowerShellConfig.Instance.GetModulePath(ConfigScope.CurrentUser);
+            Assert.Null(modulePath);
+
+            // Experimental features list is empty.
+            string[] features = PowerShellConfig.Instance.GetExperimentalFeatures();
+            Assert.Empty(features);
+        }
+
+        [Fact]
+        [Priority(13)]
+        public void PowerShellConfig_TypeMismatchInCurrentUserConfig_FallsBackToDefaults()
+        {
+            // Verifies the per-key fail-open path: the file parses as JSON, but a value
+            // can't be materialized as its target type. Without this fallback the
+            // JsonSerializationException would propagate out of GetPolicySetting and
+            // crash startup just like #27370.
+            fixture.SetupTypeMismatchedCurrentUserConfig();
+            fixture.ForceReadingFromFile();
+
+            PowerShellPolicies policies = PowerShellConfig.Instance.GetPowerShellPolicies(ConfigScope.CurrentUser);
+            Assert.Null(policies);
+        }
+
+        [Fact]
+        [Priority(14)]
+        public void PowerShellConfig_BrokenCurrentUserConfig_EmitsWarningToStderr()
+        {
+            // A regression in the warning path would still let startup succeed (this is the
+            // whole point of the fail-open) -- but the user would silently lose their config
+            // with no indication. This test pins the user-visible warning so that doesn't
+            // happen quietly.
+            fixture.SetupBrokenCurrentUserConfigOnly();
+            fixture.ForceReadingFromFile();
+
+            string stderr = CaptureStderr(() =>
+                PowerShellConfig.Instance.GetExecutionPolicy(ConfigScope.CurrentUser, "Microsoft.PowerShell"));
+
+            Assert.Contains("WARNING:", stderr);
+            Assert.Contains("Falling back to default settings", stderr);
+        }
+
+        [Fact]
+        [Priority(15)]
+        public void PowerShellConfig_TypeMismatchInCurrentUserConfig_EmitsWarningToStderr()
+        {
+            // Pin the user-visible warning for the per-key fail-open path as well.
+            fixture.SetupTypeMismatchedCurrentUserConfig();
+            fixture.ForceReadingFromFile();
+
+            string stderr = CaptureStderr(() =>
+                PowerShellConfig.Instance.GetPowerShellPolicies(ConfigScope.CurrentUser));
+
+            Assert.Contains("WARNING:", stderr);
+            Assert.Contains("PowerShellPolicies", stderr);
+            Assert.Contains("Falling back to default for this setting", stderr);
+        }
+
+        private static string CaptureStderr(Action action)
+        {
+            var captured = new StringWriter();
+            TextWriter originalError = Console.Error;
+            try
+            {
+                Console.SetError(captured);
+                action();
+            }
+            finally
+            {
+                Console.SetError(originalError);
+            }
+
+            return captured.ToString();
         }
     }
 }
